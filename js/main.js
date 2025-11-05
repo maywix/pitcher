@@ -477,31 +477,56 @@ document.addEventListener("DOMContentLoaded", function () {
         for (let i = 0; i < renderedBuffer.length; i += blockSize) {
           // Calculer la taille réelle du chunk en tenant compte de la fin du buffer
           const chunkSize = Math.min(blockSize, renderedBuffer.length - i);
-          const leftChunk = floatTo16BitPCM(left.subarray(i, i + chunkSize));
-          let rightChunk;
+          const leftChunkRaw = left.subarray(i, i + chunkSize);
+          const leftChunk = floatTo16BitPCM(leftChunkRaw);
 
-          if (right) {
-            rightChunk = floatTo16BitPCM(right.subarray(i, i + chunkSize));
+          // Si stéréo mais pas de canal droit présent, remplir avec des zéros
+          let rightChunk = null;
+          if (channels > 1) {
+            if (right) {
+              const rightChunkRaw = right.subarray(i, i + chunkSize);
+              rightChunk = floatTo16BitPCM(rightChunkRaw);
+            } else {
+              rightChunk = new Int16Array(chunkSize); // silence
+            }
           }
 
-          // Compléter avec des zéros si nécessaire pour atteindre blockSize
+          // Si le chunk est plus petit que blockSize, on pad avec des zéros
           if (chunkSize < blockSize) {
             const paddedLeft = new Int16Array(blockSize);
-            const paddedRight = right ? new Int16Array(blockSize) : undefined;
-
             paddedLeft.set(leftChunk);
-            if (right && rightChunk) {
-              paddedRight.set(rightChunk);
-            }
-
-            const mp3buf = mp3encoder.encodeBuffer(paddedLeft, paddedRight);
-            if (mp3buf && mp3buf.length > 0) {
-              mp3Chunks.push(new Uint8Array(mp3buf));
+            if (channels > 1) {
+              const paddedRight = new Int16Array(blockSize);
+              if (rightChunk) paddedRight.set(rightChunk);
+              try {
+                const mp3buf = mp3encoder.encodeBuffer(paddedLeft, paddedRight);
+                if (mp3buf && mp3buf.length > 0) mp3Chunks.push(new Uint8Array(mp3buf));
+              } catch (encErr) {
+                if (window.__pitcherDebug) window.__pitcherDebug.log('encodeBuffer error (padded stereo): ' + encErr.message);
+                throw encErr;
+              }
+            } else {
+              try {
+                const mp3buf = mp3encoder.encodeBuffer(paddedLeft);
+                if (mp3buf && mp3buf.length > 0) mp3Chunks.push(new Uint8Array(mp3buf));
+              } catch (encErr) {
+                if (window.__pitcherDebug) window.__pitcherDebug.log('encodeBuffer error (padded mono): ' + encErr.message);
+                throw encErr;
+              }
             }
           } else {
-            const mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
-            if (mp3buf && mp3buf.length > 0) {
-              mp3Chunks.push(new Uint8Array(mp3buf));
+            // chunkSize === blockSize -> pas besoin de padding
+            try {
+              if (channels > 1) {
+                const mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
+                if (mp3buf && mp3buf.length > 0) mp3Chunks.push(new Uint8Array(mp3buf));
+              } else {
+                const mp3buf = mp3encoder.encodeBuffer(leftChunk);
+                if (mp3buf && mp3buf.length > 0) mp3Chunks.push(new Uint8Array(mp3buf));
+              }
+            } catch (encErr) {
+              if (window.__pitcherDebug) window.__pitcherDebug.log('encodeBuffer error: ' + encErr.message);
+              throw encErr;
             }
           }
         }

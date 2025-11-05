@@ -202,12 +202,47 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .eq-slider input[type="range"] {
-  writing-mode: vertical-lr;
-  direction: rtl;
-  height: 100px;
+  /* Native vertical slider when supported */
+  writing-mode: vertical-rl; /* vertical top-to-bottom */
+  -webkit-appearance: slider-vertical; /* works in Blink/WebKit (deprecated warning possible) */
+  appearance: slider-vertical;
   width: 20px;
-  -webkit-appearance: slider;
-  appearance: slider;
+  height: 110px;
+  margin: 0.25rem 0;
+  background: transparent;
+  padding: 0;
+}
+
+/* WebKit/Blink track & thumb for vertical orientation */
+.eq-slider input[type="range"]::-webkit-slider-runnable-track {
+  width: 6px;
+  height: 100%;
+  background: var(--slider-bg);
+  border-radius: 3px;
+}
+.eq-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  background-color: var(--primary-color);
+  border-radius: 50%;
+  margin-left: -5px; /* center over the track */
+  cursor: pointer;
+}
+
+/* Firefox track & thumb for vertical orientation */
+.eq-slider input[type="range"]::-moz-range-track {
+  width: 6px;
+  height: 100%;
+  background: var(--slider-bg);
+  border-radius: 3px;
+}
+.eq-slider input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background-color: var(--primary-color);
+  border-radius: 50%;
+  cursor: pointer;
 }
 
 .eq-slider .freq {
