@@ -2,76 +2,80 @@ document.addEventListener("DOMContentLoaded", function () {
   const audioProcessor = new AudioProcessor();
   let wavesurfer;
   let currentFileName = null;
+  // Runtime state (was accidentally removed during edits)
   let audioFiles = new Map();
   // Equalizer runtime state
-  let eqFilters = []; // BiquadFilterNodes created when audio is loaded
-  let pendingEqGains = []; // gains set by sliders before filters exist
+  let eqFilters = [];
+  let pendingEqGains = [];
+  const eqFreqs = [
+    20, 25, 31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630,
+    800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000,
+    12500, 16000, 20000,
+  ];
+  let currentReverbImpulse = null;
+  let currentReverbMix = 0;
+  let currentReverbSize = 0.5;
+  wavesurfer = WaveSurfer.create({
+    container: "#waveform",
+    waveColor: "#ff5500",
+    progressColor: "#ff7733",
+    cursorColor: "#ffffff",
+    height: 128,
+    responsive: true,
+    backend: "WebAudio",
+  });
 
-  // Initialisation de WaveSurfer
-  function initWaveSurfer() {
-    wavesurfer = WaveSurfer.create({
-      container: "#waveform",
-      waveColor: "#ff5500",
-      progressColor: "#ff7733",
-      cursorColor: "#ffffff",
-      height: 128,
-      responsive: true,
-      normalize: true,
-      backgroundColor: "#1a1a1a",
-      backend: "WebAudio",
-    });
-
-    wavesurfer.on("finish", function () {
-      document.getElementById("playBtn").innerHTML =
-        '<i class="fas fa-play"></i>';
-    });
-  }
-
-  initWaveSurfer();
-
-  // Création des sliders de l'égaliseur
+  // Keep some basic UI hooks for time updates (more listeners are added later)
+  wavesurfer.on("ready", function () {
+    document.getElementById("totalTime").textContent = formatTime(
+      wavesurfer.getDuration()
+    );
+  });
+  wavesurfer.on("audioprocess", function () {
+    document.getElementById("currentTime").textContent = formatTime(
+      wavesurfer.getCurrentTime()
+    );
+  });
+  // Create 31-band EQ sliders
   function createEQSliders() {
     const eqContainer = document.getElementById("eqContainer");
-    // build sliders for the 31-band EQ
-    const freqs = [
-      20, 25, 31.5, 40, 50, 63, 80, 100, 125, 160,
-      200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600,
-      2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000, 12500, 16000, 20000
-    ];
+    eqContainer.innerHTML = "";
+    pendingEqGains = new Array(eqFreqs.length).fill(0);
 
-    freqs.forEach((freq, index) => {
+    eqFreqs.forEach((f, i) => {
       const sliderContainer = document.createElement("div");
       sliderContainer.className = "eq-slider";
 
-      const slider = document.createElement("input");
-      slider.type = "range";
-      slider.min = -12;
-      slider.max = 12;
-      slider.value = 0;
-      slider.step = 0.1;
-
-      const freqLabel = document.createElement("span");
-      freqLabel.className = "freq";
-      freqLabel.textContent = freq < 1000 ? freq + "Hz" : (freq / 1000) + "kHz";
-
-      // keep pending gain in case filters not created yet
-      pendingEqGains[index] = 0;
-
-      slider.addEventListener("input", (e) => {
-        const gain = parseFloat(e.target.value);
-        pendingEqGains[index] = gain;
-        // if filters exist, update immediately
-        if (eqFilters[index]) {
-          eqFilters[index].gain.value = gain;
+      const input = document.createElement("input");
+      input.type = "range";
+      input.min = -12;
+      input.max = 12;
+      input.step = 0.1;
+      input.value = 0;
+      input.dataset.index = i;
+      input.addEventListener("input", function (e) {
+        const idx = parseInt(this.dataset.index);
+        const val = parseFloat(this.value);
+        pendingEqGains[idx] = val;
+        if (eqFilters && eqFilters[idx]) {
+          try {
+            eqFilters[idx].gain.value = val;
+          } catch (err) {
+            /* ignore */
+          }
         }
       });
 
-      sliderContainer.appendChild(slider);
-      sliderContainer.appendChild(freqLabel);
+      const label = document.createElement("label");
+      label.textContent = f + " Hz";
+
+      sliderContainer.appendChild(input);
+      sliderContainer.appendChild(label);
       eqContainer.appendChild(sliderContainer);
     });
   }
 
+  // create the EQ UI (wavesurfer already initialized above)
   createEQSliders();
 
   // Gestion de la liste des fichiers
@@ -118,21 +122,23 @@ document.addEventListener("DOMContentLoaded", function () {
         // Récupérer le contexte audio et la source
         const audioContext = wavesurfer.backend.ac;
         // wavesurfer backend may expose different source names depending on version
-        const source = wavesurfer.backend.source || wavesurfer.backend.bufferSource || wavesurfer.backend._bufferSource;
+        const source =
+          wavesurfer.backend.source ||
+          wavesurfer.backend.bufferSource ||
+          wavesurfer.backend._bufferSource;
 
         // Déconnecter proprement la source existante
-        try { if (source) source.disconnect(); } catch (e) { /* ignore */ }
+        try {
+          if (source) source.disconnect();
+        } catch (e) {
+          /* ignore */
+        }
 
         // Créer (ou recréer) l'égaliseur si nécessaire
         if (!eqFilters || eqFilters.length === 0) {
-          const freqs = [
-            20, 25, 31.5, 40, 50, 63, 80, 100, 125, 160,
-            200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600,
-            2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000, 12500, 16000, 20000
-          ];
-          eqFilters = freqs.map((f) => {
+          eqFilters = eqFreqs.map((f) => {
             const filter = audioContext.createBiquadFilter();
-            filter.type = 'peaking';
+            filter.type = "peaking";
             filter.frequency.value = f;
             filter.Q.value = 4.31;
             filter.gain.value = 0;
@@ -142,7 +148,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
         // apply any pending slider gains
         eqFilters.forEach((filter, i) => {
-          if (typeof pendingEqGains[i] === 'number') filter.gain.value = pendingEqGains[i];
+          if (typeof pendingEqGains[i] === "number")
+            filter.gain.value = pendingEqGains[i];
         });
 
         // create reverb and dry path
@@ -152,12 +159,20 @@ document.addEventListener("DOMContentLoaded", function () {
         const dryGain = audioContext.createGain();
 
         // Configurer les gains
-        reverbGain.gain.value = parseFloat(document.getElementById('reverbMix').value);
+        reverbGain.gain.value = parseFloat(
+          document.getElementById("reverbMix").value
+        );
         dryGain.gain.value = 1 - reverbGain.gain.value;
 
         // Créer l'effet de réverbération (impulse)
-        const duration = Math.max(0.1, parseFloat(document.getElementById('reverbSize').value) * 5);
-        const decay = Math.max(0.1, parseFloat(document.getElementById('reverbSize').value) * 3);
+        const duration = Math.max(
+          0.1,
+          parseFloat(document.getElementById("reverbSize").value) * 5
+        );
+        const decay = Math.max(
+          0.1,
+          parseFloat(document.getElementById("reverbSize").value) * 3
+        );
         const sampleRate = audioContext.sampleRate;
         const length = Math.max(1, Math.floor(sampleRate * duration));
         const impulse = audioContext.createBuffer(2, length, sampleRate);
@@ -165,22 +180,44 @@ document.addEventListener("DOMContentLoaded", function () {
           const channelData = impulse.getChannelData(channel);
           for (let i = 0; i < length; i++) {
             const t = i / sampleRate;
-            channelData[i] = (Math.random() * 2 - 1) * Math.pow(1 - t / duration, decay);
+            channelData[i] =
+              (Math.random() * 2 - 1) * Math.pow(1 - t / duration, decay);
           }
         }
         reverbNode.buffer = impulse;
+        // store current impulse and mix/size for export rendering
+        try {
+          currentReverbImpulse = impulse;
+          currentReverbMix = reverbGain.gain.value;
+          currentReverbSize = parseFloat(
+            document.getElementById("reverbSize").value
+          );
+        } catch (e) {
+          /* ignore */
+        }
 
         // Déconnecter d'anciennes liaisons des filtres (éviter multiconnexions)
-        try { if (eqFilters && eqFilters.length) eqFilters.forEach(f => f.disconnect()); } catch (e) { /* ignore */ }
+        try {
+          if (eqFilters && eqFilters.length)
+            eqFilters.forEach((f) => f.disconnect());
+        } catch (e) {
+          /* ignore */
+        }
 
         // Try to use WaveSurfer's setFilters API (preferred)
         let filtersAppliedViaWaveSurfer = false;
-        if (typeof wavesurfer.backend.setFilters === 'function' && eqFilters.length > 0) {
+        if (
+          typeof wavesurfer.backend.setFilters === "function" &&
+          eqFilters.length > 0
+        ) {
           try {
             wavesurfer.backend.setFilters(eqFilters);
             filtersAppliedViaWaveSurfer = true;
           } catch (e) {
-            console.warn('wavesurfer.backend.setFilters failed, falling back to manual routing', e);
+            console.warn(
+              "wavesurfer.backend.setFilters failed, falling back to manual routing",
+              e
+            );
             filtersAppliedViaWaveSurfer = false;
           }
         }
@@ -206,7 +243,9 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         // Appliquer le pitch/speed via wavesurfer
-        const pitchSpeed = parseFloat(document.getElementById('pitchSpeed').value);
+        const pitchSpeed = parseFloat(
+          document.getElementById("pitchSpeed").value
+        );
         wavesurfer.setPlaybackRate(pitchSpeed);
       }
 
@@ -299,43 +338,118 @@ document.addEventListener("DOMContentLoaded", function () {
         const currentFile = audioFiles.get(currentFileName);
         if (!currentFile) throw new Error("Fichier non trouvé");
 
-        // Obtenir le buffer audio actuel de wavesurfer avec les effets
+        // Obtenir le buffer audio actuel de wavesurfer
         const audioBuffer = wavesurfer.backend.buffer;
 
         // Créer un nouveau contexte audio hors-ligne
+        // Adjust offline render length according to playbackRate so exported file matches preview speed
+        const requestedPlaybackRate =
+          parseFloat(document.getElementById("pitchSpeed").value) || 1;
+        const offlineLength = Math.max(
+          1,
+          Math.ceil(audioBuffer.length / requestedPlaybackRate)
+        );
         const offlineContext = new OfflineAudioContext(
+          audioBuffer.numberOfChannels,
+          offlineLength,
+          audioBuffer.sampleRate
+        );
+
+        // Créer une source avec une copie du buffer dans le contexte hors-ligne
+        const source = offlineContext.createBufferSource();
+        const offBuffer = offlineContext.createBuffer(
           audioBuffer.numberOfChannels,
           audioBuffer.length,
           audioBuffer.sampleRate
         );
+        for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+          offBuffer.copyToChannel(audioBuffer.getChannelData(ch), ch, 0);
+        }
+        source.buffer = offBuffer;
 
-        // Créer une source avec le buffer
-        const source = offlineContext.createBufferSource();
-        source.buffer = audioBuffer;
+        // Appliquer le pitch/speed — use the UI slider value to ensure parity with preview
+        const playbackRate =
+          parseFloat(document.getElementById("pitchSpeed").value) || 1;
+        source.playbackRate.value = playbackRate;
 
-        // Appliquer le pitch/speed
-        source.playbackRate.value = parseFloat(
-          document.getElementById("pitchSpeed").value
-        );
+        // Recréer la chaîne d'effets dans le contexte hors-ligne (EQ + reverb)
+        // Créer filtres EQ
+        const offlineFilters = eqFreqs.map((f, i) => {
+          const filter = offlineContext.createBiquadFilter();
+          filter.type = "peaking";
+          filter.frequency.value = f;
+          filter.Q.value = 4.31;
+          // gain: prefer live filter values if present, otherwise pending gains
+          const liveGain =
+            eqFilters[i] && typeof eqFilters[i].gain === "object"
+              ? eqFilters[i].gain.value
+              : undefined;
+          filter.gain.value =
+            typeof liveGain === "number"
+              ? liveGain
+              : typeof pendingEqGains[i] === "number"
+              ? pendingEqGains[i]
+              : 0;
+          return filter;
+        });
 
-        // Connecter directement à la destination pour l'export
-        source.connect(offlineContext.destination);
+        // Reverb (copy impulse to offline context)
+        const offlineReverb = offlineContext.createConvolver();
+        if (currentReverbImpulse) {
+          const offImp = offlineContext.createBuffer(
+            currentReverbImpulse.numberOfChannels,
+            currentReverbImpulse.length,
+            currentReverbImpulse.sampleRate
+          );
+          for (let ch = 0; ch < currentReverbImpulse.numberOfChannels; ch++) {
+            offImp.copyToChannel(
+              currentReverbImpulse.getChannelData(ch),
+              ch,
+              0
+            );
+          }
+          offlineReverb.buffer = offImp;
+        }
 
-        // Démarrer la source et rendre
+        const offlineReverbGain = offlineContext.createGain();
+        const offlineDryGain = offlineContext.createGain();
+        offlineReverbGain.gain.value =
+          currentReverbMix ||
+          parseFloat(document.getElementById("reverbMix").value) ||
+          0;
+        offlineDryGain.gain.value = 1 - offlineReverbGain.gain.value;
+
+        // Connect chain: source -> EQ -> (dry + reverb) -> destination
+        if (offlineFilters.length > 0) {
+          source.connect(offlineFilters[0]);
+          for (let i = 0; i < offlineFilters.length - 1; i++) {
+            offlineFilters[i].connect(offlineFilters[i + 1]);
+          }
+          offlineFilters[offlineFilters.length - 1].connect(offlineDryGain);
+          offlineFilters[offlineFilters.length - 1].connect(offlineReverb);
+        } else {
+          source.connect(offlineDryGain);
+          source.connect(offlineReverb);
+        }
+
+        offlineReverb.connect(offlineReverbGain);
+        offlineDryGain.connect(offlineContext.destination);
+        offlineReverbGain.connect(offlineContext.destination);
+
+        // Démarrer le rendu
         source.start(0);
         const renderedBuffer = await offlineContext.startRendering();
 
-        // Convertir le buffer en blob
+        // Convertir le buffer rendu en WAV
         const blob = await new Promise((resolve) => {
           const sampleRate = renderedBuffer.sampleRate;
           const length = renderedBuffer.length;
           const channels = renderedBuffer.numberOfChannels;
 
           // Créer le WAV
-          const buffer = new ArrayBuffer(44 + length * 2);
+          const buffer = new ArrayBuffer(44 + length * 2 * channels);
           const view = new DataView(buffer);
 
-          // En-tête WAV
           const writeString = (view, offset, string) => {
             for (let i = 0; i < string.length; i++) {
               view.setUint8(offset + i, string.charCodeAt(i));
@@ -343,7 +457,7 @@ document.addEventListener("DOMContentLoaded", function () {
           };
 
           writeString(view, 0, "RIFF");
-          view.setUint32(4, 36 + length * 2, true);
+          view.setUint32(4, 36 + length * 2 * channels, true);
           writeString(view, 8, "WAVE");
           writeString(view, 12, "fmt ");
           view.setUint32(16, 16, true);
@@ -354,16 +468,15 @@ document.addEventListener("DOMContentLoaded", function () {
           view.setUint16(32, channels * 2, true);
           view.setUint16(34, 16, true);
           writeString(view, 36, "data");
-          view.setUint32(40, length * 2, true);
+          view.setUint32(40, length * 2 * channels, true);
 
           // Écriture des données audio
-          const channelData = new Float32Array(length);
           let offset = 44;
-
-          for (let i = 0; i < channels; i++) {
-            renderedBuffer.copyFromChannel(channelData, i);
-            for (let j = 0; j < length; j++) {
-              const sample = Math.max(-1, Math.min(1, channelData[j]));
+          const channelData = new Float32Array(length);
+          for (let ch = 0; ch < channels; ch++) {
+            renderedBuffer.copyFromChannel(channelData, ch);
+            for (let i = 0; i < length; i++) {
+              const sample = Math.max(-1, Math.min(1, channelData[i]));
               view.setInt16(
                 offset,
                 sample < 0 ? sample * 0x8000 : sample * 0x7fff,
@@ -373,18 +486,85 @@ document.addEventListener("DOMContentLoaded", function () {
             }
           }
 
-          resolve(new Blob([buffer], { type: currentFile.type }));
+          resolve(new Blob([buffer], { type: "audio/wav" }));
         });
+        // Convert rendered WAV to MP3 in-browser using lamejs
+        try {
+          if (
+            typeof lamejs === "undefined" &&
+            typeof window.lamejs === "undefined" &&
+            typeof window.Mp3Encoder === "undefined"
+          ) {
+            throw new Error("lamejs non chargé");
+          }
 
-        // Créer le lien de téléchargement
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "processed_" + currentFileName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+          // helper: convert float32 to Int16Array
+          function floatTo16BitPCM(float32Array) {
+            const l = float32Array.length;
+            const int16 = new Int16Array(l);
+            for (let i = 0; i < l; i++) {
+              let s = Math.max(-1, Math.min(1, float32Array[i]));
+              int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+            }
+            return int16;
+          }
+
+          const Mp3Encoder =
+            window.Mp3Encoder ||
+            (lamejs && lamejs.Mp3Encoder) ||
+            (window.lamejs && window.lamejs.Mp3Encoder);
+          const channels = renderedBuffer.numberOfChannels;
+          const sampleRate = renderedBuffer.sampleRate;
+          const kbps = 192;
+          const mp3encoder = new Mp3Encoder(channels, sampleRate, kbps);
+
+          const left = renderedBuffer.getChannelData(0);
+          const right = channels > 1 ? renderedBuffer.getChannelData(1) : null;
+          const blockSize = 1152;
+          const mp3Chunks = [];
+
+          for (let i = 0; i < renderedBuffer.length; i += blockSize) {
+            const leftChunk = floatTo16BitPCM(left.subarray(i, i + blockSize));
+            const rightChunk = right
+              ? floatTo16BitPCM(right.subarray(i, i + blockSize))
+              : undefined;
+            const mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
+            if (mp3buf && mp3buf.length > 0)
+              mp3Chunks.push(new Uint8Array(mp3buf));
+          }
+
+          const mp3bufEnd = mp3encoder.flush();
+          if (mp3bufEnd && mp3bufEnd.length > 0)
+            mp3Chunks.push(new Uint8Array(mp3bufEnd));
+
+          const mp3Blob = new Blob(mp3Chunks, { type: "audio/mpeg" });
+
+          // trigger download
+          const url = URL.createObjectURL(mp3Blob);
+          const a = document.createElement("a");
+          a.href = url;
+          const baseName = currentFileName.replace(/\.[^/.]+$/, "");
+          a.download = "processed_" + baseName + ".mp3";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } catch (encErr) {
+          console.error("MP3 encoding failed, falling back to WAV", encErr);
+          alert(
+            "Encodage MP3 échoué : " +
+              (encErr && encErr.message ? encErr.message : encErr)
+          );
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          const baseName = currentFileName.replace(/\.[^/.]+$/, "");
+          a.download = "processed_" + baseName + ".wav";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }
       } catch (error) {
         console.error("Erreur lors de l'export:", error);
         alert("Une erreur est survenue lors de l'export");
