@@ -324,62 +324,104 @@ document.addEventListener("DOMContentLoaded", function () {
   document
     .getElementById("exportBtn")
     .addEventListener("click", async function () {
-      if (!currentFileName) {
-        alert("Veuillez d'abord charger un fichier audio");
+      if (audioFiles.size === 0) {
+        alert("Veuillez d'abord charger au moins un fichier audio");
         return;
       }
 
-      this.disabled = true;
-      this.innerHTML =
+      const btn = this;
+      btn.disabled = true;
+      btn.innerHTML =
         '<i class="fas fa-spinner fa-spin"></i> Export en cours...';
 
-      try {
-        // Récupérer le fichier actuel
-        const currentFile = audioFiles.get(currentFileName);
-        if (!currentFile) throw new Error("Fichier non trouvé");
+      // helper: encode rendered AudioBuffer to MP3 Blob using lamejs
+      async function encodeRenderedBufferToMp3(renderedBuffer) {
+        if (
+          typeof lamejs === "undefined" &&
+          typeof window.Mp3Encoder === "undefined"
+        ) {
+          throw new Error("lamejs non chargé");
+        }
 
-        // Obtenir le buffer audio actuel de wavesurfer
-        const audioBuffer = wavesurfer.backend.buffer;
+        function floatTo16BitPCM(float32Array) {
+          const l = float32Array.length;
+          const int16 = new Int16Array(l);
+          for (let i = 0; i < l; i++) {
+            let s = Math.max(-1, Math.min(1, float32Array[i]));
+            int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+          }
+          return int16;
+        }
 
-        // Créer un nouveau contexte audio hors-ligne
-        // Adjust offline render length according to playbackRate so exported file matches preview speed
-        const requestedPlaybackRate =
+        const Mp3Encoder =
+          window.Mp3Encoder ||
+          (lamejs && lamejs.Mp3Encoder) ||
+          (window.lamejs && window.lamejs.Mp3Encoder);
+        const channels = renderedBuffer.numberOfChannels;
+        const sampleRate = renderedBuffer.sampleRate;
+        const kbps = 192;
+        const mp3encoder = new Mp3Encoder(channels, sampleRate, kbps);
+
+        const left = renderedBuffer.getChannelData(0);
+        const right = channels > 1 ? renderedBuffer.getChannelData(1) : null;
+        const blockSize = 1152;
+        const mp3Chunks = [];
+
+        for (let i = 0; i < renderedBuffer.length; i += blockSize) {
+          const leftChunk = floatTo16BitPCM(left.subarray(i, i + blockSize));
+          const rightChunk = right
+            ? floatTo16BitPCM(right.subarray(i, i + blockSize))
+            : undefined;
+          const mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
+          if (mp3buf && mp3buf.length > 0)
+            mp3Chunks.push(new Uint8Array(mp3buf));
+        }
+
+        const mp3bufEnd = mp3encoder.flush();
+        if (mp3bufEnd && mp3bufEnd.length > 0)
+          mp3Chunks.push(new Uint8Array(mp3bufEnd));
+
+        return new Blob(mp3Chunks, { type: "audio/mpeg" });
+      }
+
+      // helper: process a single File -> MP3 Blob (applies current EQ/reverb/pitch)
+      async function processFileToMp3(file) {
+        // decode file
+        const arrayBuffer = await file.arrayBuffer();
+        const decoded = await audioProcessor.audioContext.decodeAudioData(
+          arrayBuffer.slice(0)
+        );
+
+        const playbackRate =
           parseFloat(document.getElementById("pitchSpeed").value) || 1;
         const offlineLength = Math.max(
           1,
-          Math.ceil(audioBuffer.length / requestedPlaybackRate)
+          Math.ceil(decoded.length / playbackRate)
         );
         const offlineContext = new OfflineAudioContext(
-          audioBuffer.numberOfChannels,
+          decoded.numberOfChannels,
           offlineLength,
-          audioBuffer.sampleRate
+          decoded.sampleRate
         );
 
-        // Créer une source avec une copie du buffer dans le contexte hors-ligne
         const source = offlineContext.createBufferSource();
         const offBuffer = offlineContext.createBuffer(
-          audioBuffer.numberOfChannels,
-          audioBuffer.length,
-          audioBuffer.sampleRate
+          decoded.numberOfChannels,
+          decoded.length,
+          decoded.sampleRate
         );
-        for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
-          offBuffer.copyToChannel(audioBuffer.getChannelData(ch), ch, 0);
+        for (let ch = 0; ch < decoded.numberOfChannels; ch++) {
+          offBuffer.copyToChannel(decoded.getChannelData(ch), ch, 0);
         }
         source.buffer = offBuffer;
-
-        // Appliquer le pitch/speed — use the UI slider value to ensure parity with preview
-        const playbackRate =
-          parseFloat(document.getElementById("pitchSpeed").value) || 1;
         source.playbackRate.value = playbackRate;
 
-        // Recréer la chaîne d'effets dans le contexte hors-ligne (EQ + reverb)
-        // Créer filtres EQ
+        // build EQ filters in offline context
         const offlineFilters = eqFreqs.map((f, i) => {
           const filter = offlineContext.createBiquadFilter();
           filter.type = "peaking";
           filter.frequency.value = f;
           filter.Q.value = 4.31;
-          // gain: prefer live filter values if present, otherwise pending gains
           const liveGain =
             eqFilters[i] && typeof eqFilters[i].gain === "object"
               ? eqFilters[i].gain.value
@@ -393,7 +435,6 @@ document.addEventListener("DOMContentLoaded", function () {
           return filter;
         });
 
-        // Reverb (copy impulse to offline context)
         const offlineReverb = offlineContext.createConvolver();
         if (currentReverbImpulse) {
           const offImp = offlineContext.createBuffer(
@@ -419,7 +460,6 @@ document.addEventListener("DOMContentLoaded", function () {
           0;
         offlineDryGain.gain.value = 1 - offlineReverbGain.gain.value;
 
-        // Connect chain: source -> EQ -> (dry + reverb) -> destination
         if (offlineFilters.length > 0) {
           source.connect(offlineFilters[0]);
           for (let i = 0; i < offlineFilters.length - 1; i++) {
@@ -436,141 +476,61 @@ document.addEventListener("DOMContentLoaded", function () {
         offlineDryGain.connect(offlineContext.destination);
         offlineReverbGain.connect(offlineContext.destination);
 
-        // Démarrer le rendu
         source.start(0);
         const renderedBuffer = await offlineContext.startRendering();
 
-        // Convertir le buffer rendu en WAV
-        const blob = await new Promise((resolve) => {
-          const sampleRate = renderedBuffer.sampleRate;
-          const length = renderedBuffer.length;
-          const channels = renderedBuffer.numberOfChannels;
+        const mp3Blob = await encodeRenderedBufferToMp3(renderedBuffer);
+        return mp3Blob;
+      }
 
-          // Créer le WAV
-          const buffer = new ArrayBuffer(44 + length * 2 * channels);
-          const view = new DataView(buffer);
-
-          const writeString = (view, offset, string) => {
-            for (let i = 0; i < string.length; i++) {
-              view.setUint8(offset + i, string.charCodeAt(i));
-            }
-          };
-
-          writeString(view, 0, "RIFF");
-          view.setUint32(4, 36 + length * 2 * channels, true);
-          writeString(view, 8, "WAVE");
-          writeString(view, 12, "fmt ");
-          view.setUint32(16, 16, true);
-          view.setUint16(20, 1, true);
-          view.setUint16(22, channels, true);
-          view.setUint32(24, sampleRate, true);
-          view.setUint32(28, sampleRate * 2 * channels, true);
-          view.setUint16(32, channels * 2, true);
-          view.setUint16(34, 16, true);
-          writeString(view, 36, "data");
-          view.setUint32(40, length * 2 * channels, true);
-
-          // Écriture des données audio
-          let offset = 44;
-          const channelData = new Float32Array(length);
-          for (let ch = 0; ch < channels; ch++) {
-            renderedBuffer.copyFromChannel(channelData, ch);
-            for (let i = 0; i < length; i++) {
-              const sample = Math.max(-1, Math.min(1, channelData[i]));
-              view.setInt16(
-                offset,
-                sample < 0 ? sample * 0x8000 : sample * 0x7fff,
-                true
-              );
-              offset += 2;
-            }
-          }
-
-          resolve(new Blob([buffer], { type: "audio/wav" }));
-        });
-        // Convert rendered WAV to MP3 in-browser using lamejs
-        try {
-          if (
-            typeof lamejs === "undefined" &&
-            typeof window.lamejs === "undefined" &&
-            typeof window.Mp3Encoder === "undefined"
-          ) {
-            throw new Error("lamejs non chargé");
-          }
-
-          // helper: convert float32 to Int16Array
-          function floatTo16BitPCM(float32Array) {
-            const l = float32Array.length;
-            const int16 = new Int16Array(l);
-            for (let i = 0; i < l; i++) {
-              let s = Math.max(-1, Math.min(1, float32Array[i]));
-              int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-            }
-            return int16;
-          }
-
-          const Mp3Encoder =
-            window.Mp3Encoder ||
-            (lamejs && lamejs.Mp3Encoder) ||
-            (window.lamejs && window.lamejs.Mp3Encoder);
-          const channels = renderedBuffer.numberOfChannels;
-          const sampleRate = renderedBuffer.sampleRate;
-          const kbps = 192;
-          const mp3encoder = new Mp3Encoder(channels, sampleRate, kbps);
-
-          const left = renderedBuffer.getChannelData(0);
-          const right = channels > 1 ? renderedBuffer.getChannelData(1) : null;
-          const blockSize = 1152;
-          const mp3Chunks = [];
-
-          for (let i = 0; i < renderedBuffer.length; i += blockSize) {
-            const leftChunk = floatTo16BitPCM(left.subarray(i, i + blockSize));
-            const rightChunk = right
-              ? floatTo16BitPCM(right.subarray(i, i + blockSize))
-              : undefined;
-            const mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
-            if (mp3buf && mp3buf.length > 0)
-              mp3Chunks.push(new Uint8Array(mp3buf));
-          }
-
-          const mp3bufEnd = mp3encoder.flush();
-          if (mp3bufEnd && mp3bufEnd.length > 0)
-            mp3Chunks.push(new Uint8Array(mp3bufEnd));
-
-          const mp3Blob = new Blob(mp3Chunks, { type: "audio/mpeg" });
-
-          // trigger download
+      try {
+        if (audioFiles.size === 1) {
+          // single file: process and download directly
+          const [[name, file]] = Array.from(audioFiles.entries());
+          const mp3Blob = await processFileToMp3(file);
           const url = URL.createObjectURL(mp3Blob);
           const a = document.createElement("a");
           a.href = url;
-          const baseName = currentFileName.replace(/\.[^/.]+$/, "");
+          const baseName = name.replace(/\.[^/.]+$/, "");
           a.download = "processed_" + baseName + ".mp3";
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
-        } catch (encErr) {
-          console.error("MP3 encoding failed, falling back to WAV", encErr);
-          alert(
-            "Encodage MP3 échoué : " +
-              (encErr && encErr.message ? encErr.message : encErr)
-          );
-          const url = URL.createObjectURL(blob);
+        } else {
+          // multiple files: process all and zip
+          if (typeof JSZip === "undefined") throw new Error("JSZip non chargé");
+          const zip = new JSZip();
+          let i = 0;
+          for (const [name, file] of audioFiles.entries()) {
+            i++;
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Export ${i}/${audioFiles.size}...`;
+            const mp3Blob = await processFileToMp3(file);
+            const baseName = name.replace(/\.[^/.]+$/, "");
+            zip.file("processed_" + baseName + ".mp3", mp3Blob);
+          }
+
+          btn.innerHTML =
+            '<i class="fas fa-spinner fa-spin"></i> Création du ZIP...';
+          const zipBlob = await zip.generateAsync({ type: "blob" });
+          const url = URL.createObjectURL(zipBlob);
           const a = document.createElement("a");
           a.href = url;
-          const baseName = currentFileName.replace(/\.[^/.]+$/, "");
-          a.download = "processed_" + baseName + ".wav";
+          a.download = "processed_all.zip";
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
         }
-      } catch (error) {
-        console.error("Erreur lors de l'export:", error);
-        alert("Une erreur est survenue lors de l'export");
+      } catch (err) {
+        console.error("Erreur export batch:", err);
+        alert(
+          "Erreur lors de l'export : " +
+            (err && err.message ? err.message : err)
+        );
       } finally {
-        this.disabled = false;
-        this.innerHTML =
+        btn.disabled = false;
+        btn.innerHTML =
           '<i class="fas fa-download"></i> Exporter en MP3 (192kbps)';
       }
     });
