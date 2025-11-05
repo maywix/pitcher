@@ -36,6 +36,53 @@ document.addEventListener("DOMContentLoaded", function () {
       wavesurfer.getCurrentTime()
     );
   });
+
+  // Debug panel (visible on hosted site to collect runtime errors/routing info)
+  (function createDebugPanel(){
+    try {
+      const panel = document.createElement('div');
+      panel.id = 'debugPanel';
+      panel.style.position = 'fixed';
+      panel.style.right = '10px';
+      panel.style.bottom = '10px';
+      panel.style.maxWidth = '320px';
+      panel.style.maxHeight = '200px';
+      panel.style.overflow = 'auto';
+      panel.style.background = 'rgba(0,0,0,0.6)';
+      panel.style.color = '#fff';
+      panel.style.fontSize = '12px';
+      panel.style.padding = '8px';
+      panel.style.borderRadius = '6px';
+      panel.style.zIndex = 99999;
+      panel.style.display = 'none'; // hidden by default
+      panel.innerHTML = '<strong>Debug</strong><br/>';
+      document.body.appendChild(panel);
+
+      window.__pitcherDebug = {
+        panel: panel,
+        log: function(msg){
+          try {
+            console.log('[Pitcher debug]', msg);
+            const el = document.createElement('div');
+            el.textContent = (new Date()).toLocaleTimeString() + ' - ' + msg;
+            panel.appendChild(el);
+            // keep panel small
+            while(panel.childNodes.length > 60) panel.removeChild(panel.firstChild);
+          } catch(e) { console.warn(e); }
+        },
+        show: function(){ panel.style.display = 'block'; }
+      };
+    } catch (e) { console.warn('debug panel init failed', e); }
+  })();
+
+  // global error catcher to help debug hosted issues
+  window.addEventListener('error', function(ev){
+    try {
+      const msg = ev && ev.message ? ev.message : String(ev);
+      if (window.__pitcherDebug) window.__pitcherDebug.log('Uncaught error: ' + msg);
+      console.error('Uncaught error', ev);
+    } catch(e){}
+  });
   // Create 31-band EQ sliders
   function createEQSliders() {
     const eqContainer = document.getElementById("eqContainer");
@@ -214,6 +261,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         try {
           if (connectorNode && typeof connectorNode.connect === 'function') {
+            if (window.__pitcherDebug) window.__pitcherDebug.log('Routing via backend connector node');
             // detach original connection and route through our EQ/reverb chain
             try { connectorNode.disconnect(); } catch (e) { /* ignore */ }
 
@@ -228,7 +276,9 @@ document.addEventListener("DOMContentLoaded", function () {
               connectorNode.connect(dryGain);
               connectorNode.connect(reverbNode);
             }
+            if (window.__pitcherDebug) window.__pitcherDebug.log('Routing via backend connector done');
           } else if (source) {
+            if (window.__pitcherDebug) window.__pitcherDebug.log('Routing via source node fallback');
             // fallback: connect the buffer/source directly
             if (eqFilters.length > 0) {
               source.connect(eqFilters[0]);
@@ -241,11 +291,14 @@ document.addEventListener("DOMContentLoaded", function () {
               source.connect(dryGain);
               source.connect(reverbNode);
             }
+            if (window.__pitcherDebug) window.__pitcherDebug.log('Routing via source done');
           } else {
             console.warn('No connector node or source found — audio routing may be incomplete');
+            if (window.__pitcherDebug) window.__pitcherDebug.log('No connector node or source found');
           }
         } catch (routeErr) {
           console.warn('Error while routing audio nodes for reverb/EQ', routeErr);
+          if (window.__pitcherDebug) window.__pitcherDebug.log('Routing error: ' + (routeErr && routeErr.message ? routeErr.message : String(routeErr)));
         }
 
         // Connect wet/dry gains to final output
