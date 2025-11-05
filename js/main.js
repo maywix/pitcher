@@ -38,50 +38,58 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   // Debug panel (visible on hosted site to collect runtime errors/routing info)
-  (function createDebugPanel(){
+  (function createDebugPanel() {
     try {
-      const panel = document.createElement('div');
-      panel.id = 'debugPanel';
-      panel.style.position = 'fixed';
-      panel.style.right = '10px';
-      panel.style.bottom = '10px';
-      panel.style.maxWidth = '320px';
-      panel.style.maxHeight = '200px';
-      panel.style.overflow = 'auto';
-      panel.style.background = 'rgba(0,0,0,0.6)';
-      panel.style.color = '#fff';
-      panel.style.fontSize = '12px';
-      panel.style.padding = '8px';
-      panel.style.borderRadius = '6px';
+      const panel = document.createElement("div");
+      panel.id = "debugPanel";
+      panel.style.position = "fixed";
+      panel.style.right = "10px";
+      panel.style.bottom = "10px";
+      panel.style.maxWidth = "320px";
+      panel.style.maxHeight = "200px";
+      panel.style.overflow = "auto";
+      panel.style.background = "rgba(0,0,0,0.6)";
+      panel.style.color = "#fff";
+      panel.style.fontSize = "12px";
+      panel.style.padding = "8px";
+      panel.style.borderRadius = "6px";
       panel.style.zIndex = 99999;
-      panel.style.display = 'none'; // hidden by default
-      panel.innerHTML = '<strong>Debug</strong><br/>';
+      panel.style.display = "none"; // hidden by default
+      panel.innerHTML = "<strong>Debug</strong><br/>";
       document.body.appendChild(panel);
 
       window.__pitcherDebug = {
         panel: panel,
-        log: function(msg){
+        log: function (msg) {
           try {
-            console.log('[Pitcher debug]', msg);
-            const el = document.createElement('div');
-            el.textContent = (new Date()).toLocaleTimeString() + ' - ' + msg;
+            console.log("[Pitcher debug]", msg);
+            const el = document.createElement("div");
+            el.textContent = new Date().toLocaleTimeString() + " - " + msg;
             panel.appendChild(el);
             // keep panel small
-            while(panel.childNodes.length > 60) panel.removeChild(panel.firstChild);
-          } catch(e) { console.warn(e); }
+            while (panel.childNodes.length > 60)
+              panel.removeChild(panel.firstChild);
+          } catch (e) {
+            console.warn(e);
+          }
         },
-        show: function(){ panel.style.display = 'block'; }
+        show: function () {
+          panel.style.display = "block";
+        },
       };
-    } catch (e) { console.warn('debug panel init failed', e); }
+    } catch (e) {
+      console.warn("debug panel init failed", e);
+    }
   })();
 
   // global error catcher to help debug hosted issues
-  window.addEventListener('error', function(ev){
+  window.addEventListener("error", function (ev) {
     try {
       const msg = ev && ev.message ? ev.message : String(ev);
-      if (window.__pitcherDebug) window.__pitcherDebug.log('Uncaught error: ' + msg);
-      console.error('Uncaught error', ev);
-    } catch(e){}
+      if (window.__pitcherDebug)
+        window.__pitcherDebug.log("Uncaught error: " + msg);
+      console.error("Uncaught error", ev);
+    } catch (e) {}
   });
   // Create 31-band EQ sliders
   function createEQSliders() {
@@ -253,17 +261,24 @@ document.addEventListener("DOMContentLoaded", function () {
 
         // Robust routing for EQ + reverb: prefer connecting to WaveSurfer backend master/gain node
         // so preview uses the same wet/dry path as offline rendering. Fallback to source when needed.
-        const backend = wavesurfer && wavesurfer.backend ? wavesurfer.backend : null;
+        const backend =
+          wavesurfer && wavesurfer.backend ? wavesurfer.backend : null;
         let connectorNode = null;
         if (backend) {
-          connectorNode = backend.gainNode || backend.gain || backend.masterGain || null;
+          connectorNode =
+            backend.gainNode || backend.gain || backend.masterGain || null;
         }
 
         try {
-          if (connectorNode && typeof connectorNode.connect === 'function') {
-            if (window.__pitcherDebug) window.__pitcherDebug.log('Routing via backend connector node');
+          if (connectorNode && typeof connectorNode.connect === "function") {
+            if (window.__pitcherDebug)
+              window.__pitcherDebug.log("Routing via backend connector node");
             // detach original connection and route through our EQ/reverb chain
-            try { connectorNode.disconnect(); } catch (e) { /* ignore */ }
+            try {
+              connectorNode.disconnect();
+            } catch (e) {
+              /* ignore */
+            }
 
             if (eqFilters.length > 0) {
               connectorNode.connect(eqFilters[0]);
@@ -276,9 +291,11 @@ document.addEventListener("DOMContentLoaded", function () {
               connectorNode.connect(dryGain);
               connectorNode.connect(reverbNode);
             }
-            if (window.__pitcherDebug) window.__pitcherDebug.log('Routing via backend connector done');
+            if (window.__pitcherDebug)
+              window.__pitcherDebug.log("Routing via backend connector done");
           } else if (source) {
-            if (window.__pitcherDebug) window.__pitcherDebug.log('Routing via source node fallback');
+            if (window.__pitcherDebug)
+              window.__pitcherDebug.log("Routing via source node fallback");
             // fallback: connect the buffer/source directly
             if (eqFilters.length > 0) {
               source.connect(eqFilters[0]);
@@ -291,14 +308,27 @@ document.addEventListener("DOMContentLoaded", function () {
               source.connect(dryGain);
               source.connect(reverbNode);
             }
-            if (window.__pitcherDebug) window.__pitcherDebug.log('Routing via source done');
+            if (window.__pitcherDebug)
+              window.__pitcherDebug.log("Routing via source done");
           } else {
-            console.warn('No connector node or source found — audio routing may be incomplete');
-            if (window.__pitcherDebug) window.__pitcherDebug.log('No connector node or source found');
+            console.warn(
+              "No connector node or source found — audio routing may be incomplete"
+            );
+            if (window.__pitcherDebug)
+              window.__pitcherDebug.log("No connector node or source found");
           }
         } catch (routeErr) {
-          console.warn('Error while routing audio nodes for reverb/EQ', routeErr);
-          if (window.__pitcherDebug) window.__pitcherDebug.log('Routing error: ' + (routeErr && routeErr.message ? routeErr.message : String(routeErr)));
+          console.warn(
+            "Error while routing audio nodes for reverb/EQ",
+            routeErr
+          );
+          if (window.__pitcherDebug)
+            window.__pitcherDebug.log(
+              "Routing error: " +
+                (routeErr && routeErr.message
+                  ? routeErr.message
+                  : String(routeErr))
+            );
         }
 
         // Connect wet/dry gains to final output
@@ -423,7 +453,9 @@ document.addEventListener("DOMContentLoaded", function () {
           const int16 = new Int16Array(l);
           for (let i = 0; i < l; i++) {
             let s = Math.max(-1, Math.min(1, float32Array[i]));
-            int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+            // Ajout d'une vérification pour éviter les valeurs NaN
+            if (isNaN(s)) s = 0;
+            int16[i] = s < 0 ? Math.floor(s * 0x8000) : Math.floor(s * 0x7fff);
           }
           return int16;
         }
@@ -443,13 +475,35 @@ document.addEventListener("DOMContentLoaded", function () {
         const mp3Chunks = [];
 
         for (let i = 0; i < renderedBuffer.length; i += blockSize) {
-          const leftChunk = floatTo16BitPCM(left.subarray(i, i + blockSize));
-          const rightChunk = right
-            ? floatTo16BitPCM(right.subarray(i, i + blockSize))
-            : undefined;
-          const mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
-          if (mp3buf && mp3buf.length > 0)
-            mp3Chunks.push(new Uint8Array(mp3buf));
+          // Calculer la taille réelle du chunk en tenant compte de la fin du buffer
+          const chunkSize = Math.min(blockSize, renderedBuffer.length - i);
+          const leftChunk = floatTo16BitPCM(left.subarray(i, i + chunkSize));
+          let rightChunk;
+
+          if (right) {
+            rightChunk = floatTo16BitPCM(right.subarray(i, i + chunkSize));
+          }
+
+          // Compléter avec des zéros si nécessaire pour atteindre blockSize
+          if (chunkSize < blockSize) {
+            const paddedLeft = new Int16Array(blockSize);
+            const paddedRight = right ? new Int16Array(blockSize) : undefined;
+
+            paddedLeft.set(leftChunk);
+            if (right && rightChunk) {
+              paddedRight.set(rightChunk);
+            }
+
+            const mp3buf = mp3encoder.encodeBuffer(paddedLeft, paddedRight);
+            if (mp3buf && mp3buf.length > 0) {
+              mp3Chunks.push(new Uint8Array(mp3buf));
+            }
+          } else {
+            const mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
+            if (mp3buf && mp3buf.length > 0) {
+              mp3Chunks.push(new Uint8Array(mp3buf));
+            }
+          }
         }
 
         const mp3bufEnd = mp3encoder.flush();
@@ -564,8 +618,20 @@ document.addEventListener("DOMContentLoaded", function () {
         source.start(preRollSeconds);
         const renderedBuffer = await offlineContext.startRendering();
 
-        const mp3Blob = await encodeRenderedBufferToMp3(renderedBuffer);
-        return mp3Blob;
+        try {
+          const mp3Blob = await encodeRenderedBufferToMp3(renderedBuffer);
+          return mp3Blob;
+        } catch (encodeErr) {
+          if (window.__pitcherDebug) {
+            window.__pitcherDebug.log(
+              "MP3 encoding error: " +
+                (encodeErr && encodeErr.message
+                  ? encodeErr.message
+                  : String(encodeErr))
+            );
+          }
+          throw encodeErr;
+        }
       }
 
       try {
