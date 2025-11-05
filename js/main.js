@@ -204,43 +204,55 @@ document.addEventListener("DOMContentLoaded", function () {
           /* ignore */
         }
 
-        // Try to use WaveSurfer's setFilters API (preferred)
-        let filtersAppliedViaWaveSurfer = false;
-        if (
-          typeof wavesurfer.backend.setFilters === "function" &&
-          eqFilters.length > 0
-        ) {
-          try {
-            wavesurfer.backend.setFilters(eqFilters);
-            filtersAppliedViaWaveSurfer = true;
-          } catch (e) {
-            console.warn(
-              "wavesurfer.backend.setFilters failed, falling back to manual routing",
-              e
-            );
-            filtersAppliedViaWaveSurfer = false;
-          }
+        // Robust routing for EQ + reverb: prefer connecting to WaveSurfer backend master/gain node
+        // so preview uses the same wet/dry path as offline rendering. Fallback to source when needed.
+        const backend = wavesurfer && wavesurfer.backend ? wavesurfer.backend : null;
+        let connectorNode = null;
+        if (backend) {
+          connectorNode = backend.gainNode || backend.gain || backend.masterGain || null;
         }
 
-        if (!filtersAppliedViaWaveSurfer) {
-          // manual routing: source -> EQ -> (dry + reverb) -> gain -> destination
-          if (eqFilters.length > 0 && source) {
-            source.connect(eqFilters[0]);
-            for (let i = 0; i < eqFilters.length - 1; i++) {
-              eqFilters[i].connect(eqFilters[i + 1]);
+        try {
+          if (connectorNode && typeof connectorNode.connect === 'function') {
+            // detach original connection and route through our EQ/reverb chain
+            try { connectorNode.disconnect(); } catch (e) { /* ignore */ }
+
+            if (eqFilters.length > 0) {
+              connectorNode.connect(eqFilters[0]);
+              for (let i = 0; i < eqFilters.length - 1; i++) {
+                eqFilters[i].connect(eqFilters[i + 1]);
+              }
+              eqFilters[eqFilters.length - 1].connect(dryGain);
+              eqFilters[eqFilters.length - 1].connect(reverbNode);
+            } else {
+              connectorNode.connect(dryGain);
+              connectorNode.connect(reverbNode);
             }
-            eqFilters[eqFilters.length - 1].connect(dryGain);
-            eqFilters[eqFilters.length - 1].connect(reverbNode);
           } else if (source) {
-            source.connect(dryGain);
-            source.connect(reverbNode);
+            // fallback: connect the buffer/source directly
+            if (eqFilters.length > 0) {
+              source.connect(eqFilters[0]);
+              for (let i = 0; i < eqFilters.length - 1; i++) {
+                eqFilters[i].connect(eqFilters[i + 1]);
+              }
+              eqFilters[eqFilters.length - 1].connect(dryGain);
+              eqFilters[eqFilters.length - 1].connect(reverbNode);
+            } else {
+              source.connect(dryGain);
+              source.connect(reverbNode);
+            }
+          } else {
+            console.warn('No connector node or source found — audio routing may be incomplete');
           }
-
-          reverbNode.connect(reverbGain);
-          dryGain.connect(gainNode);
-          reverbGain.connect(gainNode);
-          gainNode.connect(audioContext.destination);
+        } catch (routeErr) {
+          console.warn('Error while routing audio nodes for reverb/EQ', routeErr);
         }
+
+        // Connect wet/dry gains to final output
+        reverbNode.connect(reverbGain);
+        dryGain.connect(gainNode);
+        reverbGain.connect(gainNode);
+        gainNode.connect(audioContext.destination);
 
         // Appliquer le pitch/speed via wavesurfer
         const pitchSpeed = parseFloat(
@@ -321,6 +333,16 @@ document.addEventListener("DOMContentLoaded", function () {
     this.nextElementSibling.textContent = value.toFixed(2) + "x";
   });
 
+  // Pre-roll (silence before start) UI handler
+  const preRollEl = document.getElementById("preRoll");
+  if (preRollEl) {
+    preRollEl.addEventListener("input", function (e) {
+      const v = parseInt(this.value, 10) || 0;
+      const label = document.getElementById("preRollValue");
+      if (label) label.textContent = v + "s";
+    });
+  }
+
   document
     .getElementById("exportBtn")
     .addEventListener("click", async function () {
@@ -394,14 +416,24 @@ document.addEventListener("DOMContentLoaded", function () {
 
         const playbackRate =
           parseFloat(document.getElementById("pitchSpeed").value) || 1;
+        // pre-roll (silence before start) in seconds
+        const preRollSeconds =
+          parseFloat(
+            document.getElementById("preRoll")
+              ? document.getElementById("preRoll").value
+              : 0
+          ) || 0;
+        const sampleRate = decoded.sampleRate;
+        const preRollSamples = Math.ceil(preRollSeconds * sampleRate);
+        // offline length must account for pre-roll plus slowed/sped audio duration
         const offlineLength = Math.max(
           1,
-          Math.ceil(decoded.length / playbackRate)
+          Math.ceil(preRollSamples + decoded.length / playbackRate)
         );
         const offlineContext = new OfflineAudioContext(
           decoded.numberOfChannels,
           offlineLength,
-          decoded.sampleRate
+          sampleRate
         );
 
         const source = offlineContext.createBufferSource();
@@ -476,7 +508,7 @@ document.addEventListener("DOMContentLoaded", function () {
         offlineDryGain.connect(offlineContext.destination);
         offlineReverbGain.connect(offlineContext.destination);
 
-        source.start(0);
+        source.start(preRollSeconds);
         const renderedBuffer = await offlineContext.startRendering();
 
         const mp3Blob = await encodeRenderedBufferToMp3(renderedBuffer);
