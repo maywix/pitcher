@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pitcher Pro - Maywix</title>
+    <link rel="stylesheet" href="css/style.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+    />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>Pitcher Pro - Build by Maywixonsoundcloud</h1>
+        <div class="file-input">
+          <input
+            type="file"
+            id="audioFile"
+            accept=".mp3,.flac,.wav,.aac,.ogg"
+            multiple
+          />
+          <label for="audioFile">
+            <i class="fas fa-upload"></i> Choisir des fichiers audio
+          </label>
+        </div>
+      </header>
+
+      <div class="files-list">
+        <h3>Fichiers audio chargés</h3>
+        <ul id="audioFilesList"></ul>
+      </div>
+
+      <div class="main-controls">
+        <div class="playback-controls">
+          <button id="playBtn"><i class="fas fa-play"></i></button>
+          <button id="stopBtn"><i class="fas fa-stop"></i></button>
+          <div class="time-display">
+            <span id="currentTime">00:00</span> /
+            <span id="totalTime">00:00</span>
+          </div>
+        </div>
+
+        <div class="waveform" id="waveform"></div>
+      </div>
+
+      <div class="effects-container">
+        <div class="effect-section pitch-speed">
+          <h2>Pitch & Vitesse</h2>
+          <div class="slider-container">
+            <input
+              type="range"
+              id="pitchSpeed"
+              min="0.5"
+              max="2"
+              step="0.01"
+              value="1"
+            />
+            <span class="value">1.00x</span>
+          </div>
+        </div>
+
+        <div class="effect-section reverb">
+          <h2>Réverbération</h2>
+          <div class="slider-container">
+            <input
+              type="range"
+              id="reverbMix"
+              min="0"
+              max="1"
+              step="0.01"
+              value="0"
+            />
+            <span class="value">0%</span>
+          </div>
+          <div class="slider-container">
+            <label>Taille de la pièce</label>
+            <input
+              type="range"
+              id="reverbSize"
+              min="0.1"
+              max="0.9"
+              step="0.01"
+              value="0.5"
+            />
+            <span class="value">50%</span>
+          </div>
+        </div>
+
+        <div class="effect-section equalizer">
+          <h2>Égaliseur 31 bandes</h2>
+          <div class="eq-container" id="eqContainer">
+            <!-- Les sliders de l'égaliseur seront générés en JavaScript -->
+          </div>
+        </div>
+      </div>
+
+      <div class="export-section">
+        <button id="exportBtn" class="export-btn">
+          <i class="fas fa-download"></i> Exporter en MP3 (192kbps)
+        </button>
+      </div>
+
+      <footer>
+        <a href="https://soundcloud.com/maywix" target="_blank">
+          <i class="fab fa-soundcloud"></i> maywixonsoundcloud
+        </a>
+      </footer>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/wavesurfer.js/6.6.3/wavesurfer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/ffmpeg.min.js"></script>
+    <script src="js/audio-processor.js"></script>
+    <script src="js/main.js"></script>
+  </body>
+</html>

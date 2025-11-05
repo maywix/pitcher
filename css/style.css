@@ -1,0 +1,268 @@
+:root {
+  --bg-color: #111111;
+  --primary-color: #ff5500;
+  --text-color: #ffffff;
+  --secondary-bg: #1a1a1a;
+  --hover-color: #ff7733;
+  --slider-bg: #333333;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.6;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+h1 {
+  font-size: 2.5rem;
+  color: var(--primary-color);
+  margin-bottom: 1rem;
+}
+
+.file-input {
+  margin: 1rem 0;
+}
+
+.file-input input[type="file"] {
+  display: none;
+}
+
+.file-input label {
+  background-color: var(--primary-color);
+  color: var(--text-color);
+  padding: 0.8rem 1.5rem;
+  border-radius: 25px;
+  cursor: pointer;
+  display: inline-block;
+  transition: background-color 0.3s;
+}
+
+.file-input label:hover {
+  background-color: var(--hover-color);
+}
+
+.files-list {
+  background-color: var(--secondary-bg);
+  padding: 1rem;
+  border-radius: 10px;
+  margin-bottom: 1rem;
+}
+
+.files-list h3 {
+  color: var(--primary-color);
+  margin-bottom: 0.5rem;
+}
+
+#audioFilesList {
+  list-style: none;
+}
+
+#audioFilesList li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  margin: 0.25rem 0;
+  background-color: var(--bg-color);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+#audioFilesList li:hover {
+  background-color: var(--hover-color);
+}
+
+#audioFilesList li.active {
+  background-color: var(--primary-color);
+}
+
+.main-controls {
+  background-color: var(--secondary-bg);
+  padding: 1rem;
+  border-radius: 10px;
+  margin-bottom: 2rem;
+}
+
+.playback-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.playback-controls button {
+  background-color: var(--primary-color);
+  border: none;
+  color: var(--text-color);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.playback-controls button:hover {
+  background-color: var(--hover-color);
+}
+
+.time-display {
+  color: var(--text-color);
+  font-size: 0.9rem;
+}
+
+.waveform {
+  height: 128px;
+  background-color: var(--secondary-bg);
+  border-radius: 5px;
+}
+
+.effects-container {
+  display: grid;
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+.effect-section {
+  background-color: var(--secondary-bg);
+  padding: 1.5rem;
+  border-radius: 10px;
+}
+
+.effect-section h2 {
+  color: var(--primary-color);
+  margin-bottom: 1rem;
+  font-size: 1.2rem;
+}
+
+.slider-container {
+  margin: 1rem 0;
+}
+
+.slider-container label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+input[type="range"] {
+  width: 100%;
+  height: 6px;
+  background-color: var(--slider-bg);
+  border-radius: 3px;
+  outline: none;
+  -webkit-appearance: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  background-color: var(--primary-color);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.value {
+  font-size: 0.8rem;
+  color: var(--text-color);
+  margin-left: 0.5rem;
+}
+
+.eq-container {
+  display: grid;
+  grid-template-columns: repeat(31, 1fr);
+  gap: 4px;
+  padding: 1rem 0;
+}
+
+.eq-slider {
+  height: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.eq-slider input[type="range"] {
+  writing-mode: bt-lr;
+  -webkit-appearance: slider-vertical;
+  height: 100px;
+  width: 20px;
+}
+
+.eq-slider .freq {
+  font-size: 0.7rem;
+  transform: rotate(-90deg);
+  margin-top: 0.5rem;
+  white-space: nowrap;
+}
+
+.export-section {
+  text-align: center;
+  margin: 2rem 0;
+}
+
+.export-btn {
+  background-color: var(--primary-color);
+  color: var(--text-color);
+  border: none;
+  padding: 1rem 2rem;
+  border-radius: 25px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.export-btn:hover {
+  background-color: var(--hover-color);
+}
+
+footer {
+  text-align: center;
+  margin-top: 2rem;
+  padding: 1rem;
+}
+
+footer a {
+  color: var(--primary-color);
+  text-decoration: none;
+  font-size: 1.1rem;
+  transition: color 0.3s;
+}
+
+footer a:hover {
+  color: var(--hover-color);
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .eq-container {
+    grid-template-columns: repeat(16, 1fr);
+    overflow-x: auto;
+  }
+
+  .effects-container {
+    gap: 1rem;
+  }
+}
