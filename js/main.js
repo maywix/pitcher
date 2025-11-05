@@ -485,14 +485,15 @@ document.addEventListener("DOMContentLoaded", function () {
 
       try {
         if (audioFiles.size === 1) {
-          // single file: process and download directly
+          // single file: process and download directly (keep original base name, change extension to .mp3)
           const [[name, file]] = Array.from(audioFiles.entries());
           const mp3Blob = await processFileToMp3(file);
           const url = URL.createObjectURL(mp3Blob);
           const a = document.createElement("a");
           a.href = url;
           const baseName = name.replace(/\.[^/.]+$/, "");
-          a.download = "processed_" + baseName + ".mp3";
+          const finalName = baseName + ".mp3";
+          a.download = finalName;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
@@ -507,7 +508,8 @@ document.addEventListener("DOMContentLoaded", function () {
             btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Export ${i}/${audioFiles.size}...`;
             const mp3Blob = await processFileToMp3(file);
             const baseName = name.replace(/\.[^/.]+$/, "");
-            zip.file("processed_" + baseName + ".mp3", mp3Blob);
+            const finalName = baseName + ".mp3";
+            zip.file(finalName, mp3Blob);
           }
 
           btn.innerHTML =
