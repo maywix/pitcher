@@ -900,8 +900,13 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
   
-  // Disc scratching / dragging
+  // Disc scratching / dragging with REAL vinyl effect
   if (djDisc) {
+    let lastScratchTime = 0;
+    let scratchVelocity = 0;
+    let wasPlayingBeforeScratch = false;
+    let scratchAnimationId = null;
+    
     // Calculate angle from center of disc
     function getAngleFromCenter(e, element) {
       const rect = element.getBoundingClientRect();
@@ -914,6 +919,82 @@ document.addEventListener("DOMContentLoaded", function () {
       return Math.atan2(clientY - centerY, clientX - centerX) * (180 / Math.PI);
     }
     
+    // Apply vinyl scratch effect - changes playback rate based on rotation
+    function applyScratchEffect(deltaAngle, deltaTime) {
+      if (!wavesurfer || !wavesurfer.backend) return;
+      
+      // Calculate rotation velocity (degrees per millisecond)
+      const velocity = deltaTime > 0 ? deltaAngle / deltaTime : 0;
+      scratchVelocity = velocity;
+      
+      // Convert velocity to playback rate
+      // Positive rotation = forward, negative = backward
+      // Scale: ~1 degree/ms = normal speed (1x)
+      let scratchRate = velocity * 3; // Amplify for responsiveness
+      
+      // Clamp the rate to reasonable bounds
+      scratchRate = Math.max(-3, Math.min(3, scratchRate));
+      
+      try {
+        // WaveSurfer doesn't support negative playback rates natively,
+        // so we'll simulate by seeking backwards rapidly
+        if (scratchRate < 0) {
+          // Backward scratch - seek backwards
+          const currentTime = wavesurfer.getCurrentTime();
+          const seekAmount = Math.abs(scratchRate) * 0.05; // Adjust sensitivity
+          const newTime = Math.max(0, currentTime - seekAmount);
+          wavesurfer.seekTo(newTime / wavesurfer.getDuration());
+          
+          // Set a slow positive rate to simulate the backwards sound
+          wavesurfer.setPlaybackRate(0.1);
+        } else if (scratchRate > 0.1) {
+          // Forward scratch - play at modified speed
+          wavesurfer.setPlaybackRate(scratchRate);
+          
+          // Make sure it's playing
+          if (!wavesurfer.isPlaying()) {
+            wavesurfer.play();
+          }
+        } else {
+          // Very slow or stopped - pause
+          wavesurfer.setPlaybackRate(0.1);
+        }
+      } catch (err) {
+        console.warn('Scratch effect error:', err);
+      }
+    }
+    
+    // Spin-down effect when releasing the disc
+    function spinDownEffect() {
+      if (scratchAnimationId) {
+        cancelAnimationFrame(scratchAnimationId);
+      }
+      
+      let currentRate = Math.abs(scratchVelocity * 3);
+      
+      function animateSpinDown() {
+        currentRate *= 0.92; // Decay factor
+        
+        if (currentRate > 0.05) {
+          try {
+            wavesurfer.setPlaybackRate(Math.max(0.1, currentRate));
+          } catch (err) {}
+          scratchAnimationId = requestAnimationFrame(animateSpinDown);
+        } else {
+          // Restore normal playback
+          try {
+            wavesurfer.setPlaybackRate(djSpeed);
+            if (wasPlayingBeforeScratch) {
+              wavesurfer.play();
+            }
+          } catch (err) {}
+          scratchAnimationId = null;
+        }
+      }
+      
+      animateSpinDown();
+    }
+    
     function handleDragStart(e) {
       if (!isDjPowered) return;
       
@@ -921,18 +1002,29 @@ document.addEventListener("DOMContentLoaded", function () {
       isDjDragging = true;
       djDisc.classList.add('is-dragging');
       djLastAngle = getAngleFromCenter(e, djDisc);
+      lastScratchTime = performance.now();
+      scratchVelocity = 0;
       
-      // Pause playback while scratching
-      if (wavesurfer && wavesurfer.isPlaying()) {
-        wavesurfer.pause();
-        djStatusDisplay.textContent = 'Scratch';
+      // Remember if we were playing
+      wasPlayingBeforeScratch = wavesurfer && wavesurfer.isPlaying();
+      
+      // Cancel any ongoing spin effect
+      if (scratchAnimationId) {
+        cancelAnimationFrame(scratchAnimationId);
+        scratchAnimationId = null;
       }
+      
+      djStatusDisplay.textContent = 'Scratch';
     }
     
     function handleDragMove(e) {
       if (!isDjDragging || !isDjPowered) return;
       
       e.preventDefault();
+      const now = performance.now();
+      const deltaTime = now - lastScratchTime;
+      lastScratchTime = now;
+      
       const currentAngle = getAngleFromCenter(e, djDisc);
       let deltaAngle = currentAngle - djLastAngle;
       
@@ -944,15 +1036,15 @@ document.addEventListener("DOMContentLoaded", function () {
       djDisc.style.setProperty('--dj-rotation', djRotation + 'deg');
       djLastAngle = currentAngle;
       
-      // Scrub the audio based on rotation
-      if (wavesurfer && wavesurfer.getDuration() > 0) {
-        const scrubAmount = deltaAngle / 360; // Full rotation = 1 second
-        const currentTime = wavesurfer.getCurrentTime();
-        const duration = wavesurfer.getDuration();
-        const newTime = Math.max(0, Math.min(duration, currentTime + scrubAmount));
-        wavesurfer.seekTo(newTime / duration);
-        updateDjDisplay();
-      }
+      // Apply the vinyl scratch effect
+      applyScratchEffect(deltaAngle, deltaTime);
+      
+      // Update position display
+      updateDjDisplay();
+      
+      // Update speed display with scratch velocity
+      const displayRate = Math.abs(scratchVelocity * 3).toFixed(2);
+      djSpeedDisplay.textContent = (scratchVelocity < 0 ? '-' : '') + displayRate + 'x';
     }
     
     function handleDragEnd(e) {
@@ -962,8 +1054,15 @@ document.addEventListener("DOMContentLoaded", function () {
       djDisc.classList.remove('is-dragging');
       
       if (isDjPowered && wavesurfer) {
-        djStatusDisplay.textContent = 'Lecture';
-        wavesurfer.play();
+        djStatusDisplay.textContent = wasPlayingBeforeScratch ? 'Lecture' : 'Pause';
+        
+        // Apply spin-down effect for smooth transition
+        spinDownEffect();
+        
+        // Restore speed display
+        setTimeout(() => {
+          djSpeedDisplay.textContent = djSpeed.toFixed(2) + 'x';
+        }, 500);
       }
     }
     
