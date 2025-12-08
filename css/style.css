@@ -521,6 +521,37 @@ body {
   border: 1px solid var(--border-color);
 }
 
+/* ========================================
+   AUDIO VISUALIZER
+   ======================================== */
+
+.audio-visualizer-container {
+  background: linear-gradient(180deg, rgba(10, 10, 15, 0.9) 0%, rgba(26, 26, 37, 0.95) 100%);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border-color);
+  position: relative;
+  overflow: hidden;
+}
+
+.audio-visualizer-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: 
+    radial-gradient(ellipse at center top, rgba(153, 102, 255, 0.1) 0%, transparent 50%),
+    radial-gradient(ellipse at center bottom, rgba(255, 85, 0, 0.05) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+#audioVisualizer {
+  width: 100%;
+  height: 80px;
+  display: block;
+  border-radius: var(--radius-sm);
+}
+
 .waveform-container {
   position: relative;
   margin-bottom: 1rem;
@@ -857,11 +888,66 @@ input[type="range"]::-moz-range-thumb {
    EQUALIZER
    ======================================== */
 
+/* ========================================
+   EQUALIZER - BAND SELECTOR
+   ======================================== */
+
+.eq-band-selector {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.eq-band-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.eq-band-options {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.eq-band-btn {
+  padding: 0.5rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  min-width: 50px;
+}
+
+.eq-band-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-light);
+}
+
+.eq-band-btn.active {
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  border-color: var(--primary);
+  color: white;
+  box-shadow: var(--shadow-glow);
+}
+
+/* ========================================
+   EQUALIZER - PRESET CONTROLS
+   ======================================== */
+
 .eq-controls {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
 }
 
 .eq-preset-btn {
@@ -876,42 +962,92 @@ input[type="range"]::-moz-range-thumb {
   transition: all var(--transition-fast);
 }
 
-.eq-preset-btn:hover,
+.eq-preset-btn:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-light);
+  color: var(--text-primary);
+}
+
 .eq-preset-btn.active {
   background: var(--primary);
   border-color: var(--primary);
   color: white;
 }
 
+/* ========================================
+   EQUALIZER - SLIDERS CONTAINER
+   ======================================== */
+
 .eq-container {
   display: flex;
-  gap: 2px;
-  padding: 1rem 0;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
   overflow-x: auto;
   scrollbar-width: thin;
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  position: relative;
+  min-height: 200px;
+}
+
+.eq-container::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 1.5rem;
+  right: 1.5rem;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  pointer-events: none;
 }
 
 .eq-container::-webkit-scrollbar {
-  height: 6px;
+  height: 8px;
 }
 
 .eq-container::-webkit-scrollbar-track {
   background: var(--bg-tertiary);
-  border-radius: 3px;
+  border-radius: 4px;
 }
 
 .eq-container::-webkit-scrollbar-thumb {
-  background: var(--primary);
-  border-radius: 3px;
+  background: linear-gradient(90deg, var(--primary), var(--primary-light));
+  border-radius: 4px;
 }
 
+/* ========================================
+   EQUALIZER - INDIVIDUAL SLIDER
+   ======================================== */
+
 .eq-slider {
-  flex: 0 0 auto;
-  min-width: 28px;
-  height: 160px;
+  flex: 1 1 0;
+  min-width: 20px;
+  max-width: 60px;
+  height: 180px;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: space-between;
+  position: relative;
+}
+
+/* Track line behind slider */
+.eq-slider::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  background: linear-gradient(180deg, 
+    rgba(255, 119, 51, 0.2) 0%, 
+    rgba(255, 255, 255, 0.1) 50%, 
+    rgba(255, 85, 0, 0.2) 100%);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .eq-slider input[type="range"] {
@@ -919,54 +1055,142 @@ input[type="range"]::-moz-range-thumb {
   direction: rtl;
   -webkit-appearance: slider-vertical;
   appearance: slider-vertical;
-  width: 20px;
-  height: 110px;
+  width: 28px;
+  height: 130px;
   margin: 0;
   background: transparent;
   padding: 0;
+  position: relative;
+  z-index: 1;
 }
 
+/* Webkit (Chrome, Safari) Track */
 .eq-slider input[type="range"]::-webkit-slider-runnable-track {
-  width: 6px;
+  width: 4px;
   height: 100%;
-  background: var(--bg-tertiary);
-  border-radius: 3px;
+  background: linear-gradient(180deg, 
+    rgba(255, 119, 51, 0.4) 0%, 
+    rgba(100, 100, 120, 0.2) 50%, 
+    rgba(255, 85, 0, 0.4) 100%);
+  border-radius: 2px;
 }
 
+/* Webkit (Chrome, Safari) Thumb - Orange glowing dot */
 .eq-slider input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 14px;
-  height: 14px;
-  background: linear-gradient(135deg, var(--primary-light), var(--primary));
+  width: 16px;
+  height: 16px;
+  background: linear-gradient(135deg, #ff7733, #ff5500);
   border-radius: 50%;
-  margin-left: -4px;
-  cursor: pointer;
-  box-shadow: 0 0 6px rgba(255, 85, 0, 0.4);
+  margin-left: -6px;
+  cursor: grab;
+  box-shadow: 
+    0 0 8px rgba(255, 85, 0, 0.6),
+    0 0 20px rgba(255, 85, 0, 0.3),
+    inset 0 1px 2px rgba(255, 255, 255, 0.4);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
+.eq-slider input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 
+    0 0 12px rgba(255, 85, 0, 0.8),
+    0 0 25px rgba(255, 85, 0, 0.5),
+    inset 0 1px 2px rgba(255, 255, 255, 0.5);
+}
+
+.eq-slider input[type="range"]:active::-webkit-slider-thumb {
+  cursor: grabbing;
+  transform: scale(1.2);
+}
+
+/* Firefox Track */
 .eq-slider input[type="range"]::-moz-range-track {
-  width: 6px;
+  width: 4px;
   height: 100%;
-  background: var(--bg-tertiary);
-  border-radius: 3px;
+  background: linear-gradient(180deg, 
+    rgba(255, 119, 51, 0.4) 0%, 
+    rgba(100, 100, 120, 0.2) 50%, 
+    rgba(255, 85, 0, 0.4) 100%);
+  border-radius: 2px;
 }
 
+/* Firefox Thumb - Orange glowing dot */
 .eq-slider input[type="range"]::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  background: linear-gradient(135deg, var(--primary-light), var(--primary));
+  width: 16px;
+  height: 16px;
+  background: linear-gradient(135deg, #ff7733, #ff5500);
   border-radius: 50%;
-  cursor: pointer;
+  cursor: grab;
   border: none;
+  box-shadow: 
+    0 0 8px rgba(255, 85, 0, 0.6),
+    0 0 20px rgba(255, 85, 0, 0.3),
+    inset 0 1px 2px rgba(255, 255, 255, 0.4);
 }
 
-.eq-slider .freq {
-  font-size: 0.6rem;
+/* ========================================
+   EQUALIZER - FREQUENCY LABEL
+   ======================================== */
+
+.eq-slider label {
+  font-size: 0.65rem;
   color: var(--text-muted);
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
+  writing-mode: horizontal-tb;
+  text-align: center;
   margin-top: 0.5rem;
   white-space: nowrap;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  transition: color 0.2s ease;
+}
+
+.eq-slider:hover label {
+  color: var(--text-secondary);
+}
+
+/* Value indicator on hover */
+.eq-slider .eq-value {
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.7rem;
+  color: var(--primary);
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.eq-slider:hover .eq-value {
+  opacity: 1;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .eq-container {
+    gap: 2px;
+    padding: 1rem 0.5rem;
+  }
+  
+  .eq-slider {
+    min-width: 24px;
+    height: 150px;
+  }
+  
+  .eq-slider input[type="range"] {
+    height: 100px;
+    width: 22px;
+  }
+  
+  .eq-slider label {
+    font-size: 0.55rem;
+  }
+  
+  .eq-band-selector {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
 }
 
 /* ========================================

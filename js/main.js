@@ -12,11 +12,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // Equalizer runtime state
   let eqFilters = [];
   let pendingEqGains = [];
-  const eqFreqs = [
-    20, 25, 31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630,
-    800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000,
-    12500, 16000, 20000,
-  ];
+  // EQ frequencies are now managed dynamically in the EQ section
   let currentReverbImpulse = null;
   let currentReverbMix = 0;
   let currentReverbSize = 0.5;
@@ -440,6 +436,175 @@ document.addEventListener("DOMContentLoaded", function () {
     );
   });
 
+  // ==========================================
+  // AUDIO VISUALIZER
+  // ==========================================
+  const visualizerCanvas = document.getElementById('audioVisualizer');
+  const visualizerCtx = visualizerCanvas.getContext('2d');
+  let analyserNode = null;
+  let visualizerAnimationId = null;
+  let isVisualizerActive = false;
+  
+  // Set canvas size
+  function resizeVisualizer() {
+    const container = visualizerCanvas.parentElement;
+    visualizerCanvas.width = container.offsetWidth - 32; // padding
+    visualizerCanvas.height = 80;
+  }
+  resizeVisualizer();
+  window.addEventListener('resize', resizeVisualizer);
+  
+  // Draw idle state (flat line of bars)
+  function drawIdleVisualizer() {
+    const width = visualizerCanvas.width;
+    const height = visualizerCanvas.height;
+    const barCount = 64;
+    const barWidth = (width / barCount) - 2;
+    const barGap = 2;
+    
+    visualizerCtx.clearRect(0, 0, width, height);
+    
+    for (let i = 0; i < barCount; i++) {
+      const x = i * (barWidth + barGap);
+      const barHeight = 4;
+      const y = height - barHeight;
+      
+      // Purple gradient for idle
+      const gradient = visualizerCtx.createLinearGradient(0, y, 0, height);
+      gradient.addColorStop(0, 'rgba(153, 102, 255, 0.5)');
+      gradient.addColorStop(1, 'rgba(153, 102, 255, 0.2)');
+      
+      visualizerCtx.fillStyle = gradient;
+      visualizerCtx.fillRect(x, y, barWidth, barHeight);
+    }
+  }
+  drawIdleVisualizer();
+  
+  // Create gradient colors for bars
+  function getBarGradient(ctx, x, y, height, intensity) {
+    const gradient = ctx.createLinearGradient(0, y, 0, y + height);
+    // Purple to violet gradient like the reference
+    gradient.addColorStop(0, `rgba(180, 120, 255, ${0.9 + intensity * 0.1})`);
+    gradient.addColorStop(0.5, `rgba(153, 102, 255, ${0.8 + intensity * 0.2})`);
+    gradient.addColorStop(1, `rgba(120, 80, 200, ${0.6 + intensity * 0.2})`);
+    return gradient;
+  }
+  
+  // Draw visualizer with frequency data
+  function drawVisualizer(dataArray) {
+    const width = visualizerCanvas.width;
+    const height = visualizerCanvas.height;
+    const barCount = 64;
+    const barWidth = (width / barCount) - 2;
+    const barGap = 2;
+    
+    visualizerCtx.clearRect(0, 0, width, height);
+    
+    // Sample data to match bar count
+    const step = Math.floor(dataArray.length / barCount);
+    
+    for (let i = 0; i < barCount; i++) {
+      // Average of frequencies in this range
+      let sum = 0;
+      for (let j = 0; j < step; j++) {
+        sum += dataArray[i * step + j];
+      }
+      const average = sum / step;
+      
+      // Normalize to 0-1 and apply smoothing
+      const normalized = average / 255;
+      const barHeight = Math.max(4, normalized * height * 0.9);
+      
+      const x = i * (barWidth + barGap);
+      const y = height - barHeight;
+      
+      // Get gradient based on intensity
+      const gradient = getBarGradient(visualizerCtx, x, y, barHeight, normalized);
+      
+      visualizerCtx.fillStyle = gradient;
+      
+      // Draw rounded bar
+      visualizerCtx.beginPath();
+      visualizerCtx.roundRect(x, y, barWidth, barHeight, [3, 3, 0, 0]);
+      visualizerCtx.fill();
+      
+      // Add glow effect for high intensity bars
+      if (normalized > 0.6) {
+        visualizerCtx.shadowColor = 'rgba(153, 102, 255, 0.8)';
+        visualizerCtx.shadowBlur = 10;
+        visualizerCtx.fill();
+        visualizerCtx.shadowBlur = 0;
+      }
+    }
+  }
+  
+  // Animation loop
+  function animateVisualizer() {
+    if (!analyserNode || !isVisualizerActive) {
+      drawIdleVisualizer();
+      return;
+    }
+    
+    const bufferLength = analyserNode.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    analyserNode.getByteFrequencyData(dataArray);
+    
+    drawVisualizer(dataArray);
+    
+    visualizerAnimationId = requestAnimationFrame(animateVisualizer);
+  }
+  
+  // Setup visualizer when audio context is available
+  function setupVisualizer(audioContext, sourceNode) {
+    try {
+      // Create analyser if not exists
+      if (!analyserNode) {
+        analyserNode = audioContext.createAnalyser();
+        analyserNode.fftSize = 256;
+        analyserNode.smoothingTimeConstant = 0.8;
+      }
+      
+      // Connect source to analyser (and analyser to nothing, just for analysis)
+      if (sourceNode && typeof sourceNode.connect === 'function') {
+        sourceNode.connect(analyserNode);
+      }
+      
+      isVisualizerActive = true;
+      if (!visualizerAnimationId) {
+        animateVisualizer();
+      }
+      
+      console.log('Audio visualizer setup complete');
+    } catch (err) {
+      console.warn('Visualizer setup error:', err);
+    }
+  }
+  
+  // Stop visualizer
+  function stopVisualizer() {
+    isVisualizerActive = false;
+    if (visualizerAnimationId) {
+      cancelAnimationFrame(visualizerAnimationId);
+      visualizerAnimationId = null;
+    }
+    setTimeout(drawIdleVisualizer, 100);
+  }
+  
+  // Hook into wavesurfer play/pause events
+  wavesurfer.on('play', function() {
+    if (wavesurfer.backend && wavesurfer.backend.ac) {
+      const audioContext = wavesurfer.backend.ac;
+      const connector = wavesurfer.backend.gainNode || wavesurfer.backend.gain || wavesurfer.backend.masterGain;
+      if (connector) {
+        setupVisualizer(audioContext, connector);
+      }
+    }
+  });
+  
+  wavesurfer.on('pause', stopVisualizer);
+  wavesurfer.on('stop', stopVisualizer);
+  wavesurfer.on('finish', stopVisualizer);
+
   // Debug panel (visible on hosted site to collect runtime errors/routing info)
   (function createDebugPanel() {
     try {
@@ -494,15 +659,50 @@ document.addEventListener("DOMContentLoaded", function () {
       console.error("Uncaught error", ev);
     } catch (e) {}
   });
-  // Create 31-band EQ sliders
-  function createEQSliders() {
+  // ==========================================
+  // EQUALIZER WITH BAND SELECTION (8, 15, 31)
+  // ==========================================
+  
+  // Frequency configurations for different band counts
+  const eqBandConfigs = {
+    8: [60, 170, 310, 600, 1000, 3000, 6000, 12000],
+    15: [25, 40, 63, 100, 160, 250, 400, 630, 1000, 1600, 2500, 4000, 6300, 10000, 16000],
+    31: [20, 25, 31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630,
+         800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000,
+         12500, 16000, 20000]
+  };
+  
+  let currentBandCount = 31;
+  let currentEqFreqs = eqBandConfigs[31];
+  
+  // Format frequency for display
+  function formatFrequency(freq) {
+    if (freq >= 1000) {
+      return (freq / 1000).toFixed(freq % 1000 === 0 ? 0 : 1) + 'k';
+    }
+    return freq.toString();
+  }
+  
+  // Create EQ sliders based on band count
+  function createEQSliders(bandCount = 31) {
+    currentBandCount = bandCount;
+    currentEqFreqs = eqBandConfigs[bandCount];
+    
     const eqContainer = document.getElementById("eqContainer");
     eqContainer.innerHTML = "";
-    pendingEqGains = new Array(eqFreqs.length).fill(0);
+    pendingEqGains = new Array(currentEqFreqs.length).fill(0);
+    
+    // Reset eqFilters for new configuration
+    eqFilters = [];
 
-    eqFreqs.forEach((f, i) => {
+    currentEqFreqs.forEach((f, i) => {
       const sliderContainer = document.createElement("div");
       sliderContainer.className = "eq-slider";
+
+      // Value display
+      const valueDisplay = document.createElement("span");
+      valueDisplay.className = "eq-value";
+      valueDisplay.textContent = "0dB";
 
       const input = document.createElement("input");
       input.type = "range";
@@ -511,10 +711,15 @@ document.addEventListener("DOMContentLoaded", function () {
       input.step = 0.1;
       input.value = 0;
       input.dataset.index = i;
+      input.dataset.freq = f;
       input.addEventListener("input", function (e) {
         const idx = parseInt(this.dataset.index);
         const val = parseFloat(this.value);
         pendingEqGains[idx] = val;
+        
+        // Update value display
+        valueDisplay.textContent = (val >= 0 ? "+" : "") + val.toFixed(1) + "dB";
+        
         if (eqFilters && eqFilters[idx]) {
           try {
             eqFilters[idx].gain.value = val;
@@ -525,16 +730,42 @@ document.addEventListener("DOMContentLoaded", function () {
       });
 
       const label = document.createElement("label");
-      label.textContent = f + " Hz";
+      label.textContent = formatFrequency(f);
 
+      sliderContainer.appendChild(valueDisplay);
       sliderContainer.appendChild(input);
       sliderContainer.appendChild(label);
       eqContainer.appendChild(sliderContainer);
     });
+    
+    // Update label in header
+    const bandLabel = document.getElementById("eqBandCountLabel");
+    if (bandLabel) {
+      bandLabel.textContent = bandCount;
+    }
   }
 
-  // create the EQ UI (wavesurfer already initialized above)
-  createEQSliders();
+  // Band selector buttons
+  document.querySelectorAll('.eq-band-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const bandCount = parseInt(this.dataset.bands);
+      
+      // Update active state
+      document.querySelectorAll('.eq-band-btn').forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+      
+      // Recreate sliders
+      createEQSliders(bandCount);
+      
+      // Reload audio to apply new EQ if playing
+      if (currentFileName && wavesurfer) {
+        playFile(currentFileName);
+      }
+    });
+  });
+
+  // Create the EQ UI with default 31 bands
+  createEQSliders(31);
 
   // Gestion de la liste des fichiers
   function updateFilesList() {
@@ -594,7 +825,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         // Créer (ou recréer) l'égaliseur si nécessaire
         if (!eqFilters || eqFilters.length === 0) {
-          eqFilters = eqFreqs.map((f) => {
+          eqFilters = currentEqFreqs.map((f) => {
             const filter = audioContext.createBiquadFilter();
             filter.type = "peaking";
             filter.frequency.value = f;
@@ -1011,7 +1242,7 @@ document.addEventListener("DOMContentLoaded", function () {
         source.playbackRate.value = playbackRate;
 
         // build EQ filters in offline context
-        const offlineFilters = eqFreqs.map((f, i) => {
+        const offlineFilters = currentEqFreqs.map((f, i) => {
           const filter = offlineContext.createBiquadFilter();
           filter.type = "peaking";
           filter.frequency.value = f;
