@@ -2,8 +2,13 @@ document.addEventListener("DOMContentLoaded", function () {
   const audioProcessor = new AudioProcessor();
   let wavesurfer;
   let currentFileName = null;
-  // Runtime state (was accidentally removed during edits)
+  let djTurntable = null;
+  // Runtime state
   let audioFiles = new Map();
+  // Recorder instance
+  let audioRecorder = null;
+  // Recorded files list
+  let recordedFiles = new Map();
   // Equalizer runtime state
   let eqFilters = [];
   let pendingEqGains = [];
@@ -15,6 +20,404 @@ document.addEventListener("DOMContentLoaded", function () {
   let currentReverbImpulse = null;
   let currentReverbMix = 0;
   let currentReverbSize = 0.5;
+  
+  // ==========================================
+  // TAB NAVIGATION
+  // ==========================================
+  const tabImport = document.getElementById('tabImport');
+  const tabRecord = document.getElementById('tabRecord');
+  const importTab = document.getElementById('importTab');
+  const recordTab = document.getElementById('recordTab');
+  
+  function switchTab(tabName) {
+    // Update button states
+    tabImport.classList.toggle('active', tabName === 'import');
+    tabRecord.classList.toggle('active', tabName === 'record');
+    
+    // Update tab content visibility
+    importTab.classList.toggle('active', tabName === 'import');
+    recordTab.classList.toggle('active', tabName === 'record');
+  }
+  
+  tabImport.addEventListener('click', () => switchTab('import'));
+  tabRecord.addEventListener('click', () => switchTab('record'));
+  
+  // ==========================================
+  // MODE TOGGLE (Simple / Advanced)
+  // ==========================================
+  const appContainer = document.querySelector('.app-container');
+  const simpleModeBtn = document.getElementById('simpleModeBtn');
+  const advancedModeBtn = document.getElementById('advancedModeBtn');
+  
+  // Check for saved mode preference
+  const savedMode = localStorage.getItem('pitcherMode') || 'simple';
+  setMode(savedMode);
+  
+  function setMode(mode) {
+    appContainer.setAttribute('data-mode', mode);
+    
+    // Update button states
+    simpleModeBtn.classList.toggle('active', mode === 'simple');
+    advancedModeBtn.classList.toggle('active', mode === 'advanced');
+    
+    // Save preference
+    localStorage.setItem('pitcherMode', mode);
+    
+    // If switching to simple mode and on record tab, switch to import
+    if (mode === 'simple' && recordTab.classList.contains('active')) {
+      switchTab('import');
+    }
+    
+    // Log mode change
+    console.log('Pitcher Mode:', mode);
+  }
+  
+  simpleModeBtn.addEventListener('click', () => setMode('simple'));
+  advancedModeBtn.addEventListener('click', () => setMode('advanced'));
+  
+  // ==========================================
+  // UPLOAD ZONE - CLICK & DRAG AND DROP
+  // ==========================================
+  const uploadZone = document.getElementById('uploadZone');
+  const audioFileInput = document.getElementById('audioFile');
+  
+  // Click on upload zone opens file dialog
+  uploadZone.addEventListener('click', function(e) {
+    // Prevent triggering if clicking on input itself
+    if (e.target !== audioFileInput) {
+      audioFileInput.click();
+    }
+  });
+  
+  // Drag and drop handlers
+  uploadZone.addEventListener('dragenter', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.classList.add('drag-over');
+  });
+  
+  uploadZone.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.classList.add('drag-over');
+  });
+  
+  uploadZone.addEventListener('dragleave', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only remove class if leaving the upload zone itself
+    if (e.relatedTarget && !this.contains(e.relatedTarget)) {
+      this.classList.remove('drag-over');
+    } else if (!e.relatedTarget) {
+      this.classList.remove('drag-over');
+    }
+  });
+  
+  uploadZone.addEventListener('drop', async function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.classList.remove('drag-over');
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      await handleFiles(files);
+    }
+  });
+  
+  // Prevent default drag behavior on the document
+  document.addEventListener('dragover', function(e) {
+    e.preventDefault();
+  });
+  
+  document.addEventListener('drop', function(e) {
+    e.preventDefault();
+  });
+  
+  // Handle files from both input and drag & drop
+  async function handleFiles(files) {
+    const validExtensions = ['.mp3', '.flac', '.wav', '.aac', '.ogg', '.webm'];
+    let firstFile = null;
+    
+    for (let file of files) {
+      const ext = '.' + file.name.split('.').pop().toLowerCase();
+      if (validExtensions.includes(ext) || file.type.startsWith('audio/')) {
+        audioFiles.set(file.name, file);
+        if (!firstFile) firstFile = file;
+      }
+    }
+    
+    updateFilesList();
+    
+    // Show files panel when files are added
+    const filesPanel = document.getElementById('filesPanel');
+    if (filesPanel && audioFiles.size > 0) {
+      filesPanel.classList.add('has-files');
+    }
+    
+    // Load first file if none is currently loaded
+    if (!currentFileName && firstFile) {
+      currentFileName = firstFile.name;
+      await playFile(currentFileName);
+    }
+    
+    // Hide the overlay if audio is loaded
+    const overlay = document.getElementById('waveformOverlay');
+    if (overlay && audioFiles.size > 0) {
+      overlay.style.display = 'none';
+    }
+  }
+  
+  // Clear files button
+  const clearFilesBtn = document.getElementById('clearFilesBtn');
+  if (clearFilesBtn) {
+    clearFilesBtn.addEventListener('click', function() {
+      audioFiles.clear();
+      currentFileName = null;
+      updateFilesList();
+      wavesurfer.empty();
+      
+      const overlay = document.getElementById('waveformOverlay');
+      if (overlay) overlay.style.display = 'flex';
+      
+      const filesPanel = document.getElementById('filesPanel');
+      if (filesPanel) filesPanel.classList.remove('has-files');
+    });
+  }
+  
+  // ==========================================
+  // AUDIO RECORDER SETUP
+  // ==========================================
+  const recordBtn = document.getElementById('recordBtn');
+  const stopRecordBtn = document.getElementById('stopRecordBtn');
+  
+  recordBtn.addEventListener('click', async function() {
+    try {
+      // Initialize recorder if not already
+      if (!audioRecorder) {
+        audioRecorder = new AudioRecorder();
+        await audioRecorder.init();
+      }
+      
+      // Start recording
+      const recordingName = audioRecorder.start();
+      
+      // Update UI
+      this.classList.add('recording');
+      this.innerHTML = '<i class="fas fa-circle blink"></i> <span>Enregistrement...</span>';
+      this.disabled = true;
+      stopRecordBtn.disabled = false;
+      
+      // Update status
+      const djStatus = document.getElementById('djStatus');
+      if (djStatus) djStatus.textContent = 'Enregistrement';
+      
+    } catch (error) {
+      console.error('Erreur démarrage enregistrement:', error);
+      alert('Erreur: ' + error.message);
+    }
+  });
+  
+  stopRecordBtn.addEventListener('click', function() {
+    if (audioRecorder && audioRecorder.isRecording) {
+      audioRecorder.stop();
+      
+      // Update UI
+      recordBtn.classList.remove('recording');
+      recordBtn.innerHTML = '<i class="fas fa-microphone"></i> <span>Démarrer l\'enregistrement</span>';
+      recordBtn.disabled = false;
+      this.disabled = true;
+      
+      // Update status
+      const djStatus = document.getElementById('djStatus');
+      if (djStatus) djStatus.textContent = 'En attente';
+    }
+  });
+  
+  // Handle recording complete event
+  window.addEventListener('recordingComplete', function(e) {
+    const { file, name, duration } = e.detail;
+    
+    // Add to recorded files
+    recordedFiles.set(name, file);
+    
+    // Update recorded files list
+    updateRecordedFilesList();
+    
+    // Also add to main audio files for processing
+    audioFiles.set(file.name, file);
+    updateFilesList();
+    
+    // Show success notification
+    showNotification(`Enregistrement "${name}" sauvegardé (${formatDuration(duration)})`);
+  });
+  
+  function updateRecordedFilesList() {
+    const recordedFilesList = document.getElementById('recordedFilesList');
+    if (!recordedFilesList) return;
+    
+    recordedFilesList.innerHTML = '';
+    
+    recordedFiles.forEach((file, name) => {
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <span class="file-name"><i class="fas fa-microphone"></i> ${file.name}</span>
+        <div class="file-actions">
+          <button class="btn-icon load-btn" title="Charger"><i class="fas fa-play"></i></button>
+          <button class="btn-icon delete-btn" title="Supprimer"><i class="fas fa-trash"></i></button>
+        </div>
+      `;
+      
+      // Load button
+      li.querySelector('.load-btn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        currentFileName = file.name;
+        await playFile(file.name);
+        switchTab('import');
+      });
+      
+      // Delete button
+      li.querySelector('.delete-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        recordedFiles.delete(name);
+        audioFiles.delete(file.name);
+        updateRecordedFilesList();
+        updateFilesList();
+      });
+      
+      recordedFilesList.appendChild(li);
+    });
+    
+    // Show panel if has recordings
+    const recordedFilesPanel = document.getElementById('recordedFilesPanel');
+    if (recordedFilesPanel) {
+      recordedFilesPanel.style.display = recordedFiles.size > 0 ? 'block' : 'none';
+    }
+  }
+  
+  function showNotification(message) {
+    const notification = document.createElement('div');
+    notification.className = 'notification';
+    notification.innerHTML = `<i class="fas fa-check-circle"></i> ${message}`;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => notification.classList.add('show'), 10);
+    setTimeout(() => {
+      notification.classList.remove('show');
+      setTimeout(() => notification.remove(), 300);
+    }, 3000);
+  }
+  
+  function formatDuration(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }
+  
+  // ==========================================
+  // PRESETS INTEGRATION
+  // ==========================================
+  document.querySelectorAll('.preset-btn[data-preset]').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const presetName = this.dataset.preset;
+      if (window.PRESETS && window.PRESETS[presetName]) {
+        applyPreset(window.PRESETS[presetName]);
+        
+        // Visual feedback
+        document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+        if (presetName !== 'reset') {
+          this.classList.add('active');
+        }
+      }
+    });
+  });
+  
+  function applyPreset(preset) {
+    // Apply EQ bands
+    if (preset.eq && preset.eq.bands) {
+      preset.eq.bands.forEach((gain, index) => {
+        pendingEqGains[index] = gain;
+        if (eqFilters[index]) {
+          eqFilters[index].gain.value = gain;
+        }
+        // Update slider UI
+        const slider = document.querySelector(`#eqContainer input[data-index="${index}"]`);
+        if (slider) slider.value = gain;
+      });
+    }
+    
+    // Apply reverb
+    if (preset.reverb) {
+      const reverbMixSlider = document.getElementById('reverbMix');
+      const reverbSizeSlider = document.getElementById('reverbSize');
+      
+      if (reverbMixSlider) {
+        reverbMixSlider.value = preset.reverb.mix;
+        document.getElementById('reverbMixValue').textContent = Math.round(preset.reverb.mix * 100) + '%';
+      }
+      if (reverbSizeSlider) {
+        reverbSizeSlider.value = preset.reverb.size;
+        document.getElementById('reverbSizeValue').textContent = Math.round(preset.reverb.size * 100) + '%';
+      }
+    }
+    
+    // Apply pitch/speed
+    if (preset.pitch) {
+      const pitchSlider = document.getElementById('pitchSpeed');
+      if (pitchSlider) {
+        pitchSlider.value = preset.pitch;
+        document.getElementById('pitchSpeedValue').textContent = preset.pitch.toFixed(2) + 'x';
+        if (wavesurfer && wavesurfer.backend) {
+          wavesurfer.setPlaybackRate(preset.pitch);
+        }
+      }
+    }
+    
+    // Reload audio with new settings
+    if (currentFileName) {
+      playFile(currentFileName);
+    }
+  }
+  
+  // EQ Presets buttons
+  document.querySelectorAll('.eq-preset-btn[data-eq]').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const eqPresetName = this.dataset.eq;
+      if (window.EQ_PRESETS && window.EQ_PRESETS[eqPresetName]) {
+        const eqPreset = window.EQ_PRESETS[eqPresetName];
+        eqPreset.bands.forEach((gain, index) => {
+          pendingEqGains[index] = gain;
+          if (eqFilters[index]) {
+            eqFilters[index].gain.value = gain;
+          }
+          const slider = document.querySelector(`#eqContainer input[data-index="${index}"]`);
+          if (slider) slider.value = gain;
+        });
+        
+        // Visual feedback
+        document.querySelectorAll('.eq-preset-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+      }
+    });
+  });
+  
+  // ==========================================
+  // COLLAPSIBLE PANELS
+  // ==========================================
+  document.querySelectorAll('.panel-header.collapsible').forEach(header => {
+    header.addEventListener('click', function() {
+      const content = this.nextElementSibling;
+      const icon = this.querySelector('.toggle-icon');
+      
+      content.classList.toggle('expanded');
+      if (icon) {
+        icon.style.transform = content.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0deg)';
+      }
+    });
+  });
+  
+  // ==========================================
+  // WAVESURFER SETUP
+  // ==========================================
   wavesurfer = WaveSurfer.create({
     container: "#waveform",
     waveColor: "#ff5500",
@@ -357,17 +760,10 @@ document.addEventListener("DOMContentLoaded", function () {
     .getElementById("audioFile")
     .addEventListener("change", async function (e) {
       if (e.target.files.length > 0) {
-        for (let file of e.target.files) {
-          audioFiles.set(file.name, file);
-        }
-        updateFilesList();
-
-        if (!currentFileName) {
-          currentFileName = e.target.files[0].name;
-          await playFile(currentFileName);
-        }
+        await handleFiles(e.target.files);
       }
     });
+
 
   document.getElementById("playBtn").addEventListener("click", function () {
     if (!currentFileName) {
@@ -439,6 +835,22 @@ document.addEventListener("DOMContentLoaded", function () {
       btn.innerHTML =
         '<i class="fas fa-spinner fa-spin"></i> Export en cours...';
 
+      // cancellation controller for this export run
+      const exportAbort = { canceled: false };
+      const cancelBtn = document.getElementById("cancelExportBtn");
+      function onCancelClick() {
+        exportAbort.canceled = true;
+        try {
+          btn.innerHTML = '<i class="fas fa-ban"></i> Annulation...';
+        } catch (e) {}
+        if (cancelBtn) cancelBtn.disabled = true;
+      }
+      if (cancelBtn) {
+        cancelBtn.style.display = "inline-block";
+        cancelBtn.disabled = false;
+        cancelBtn.addEventListener("click", onCancelClick);
+      }
+
       // helper: encode rendered AudioBuffer to MP3 Blob using lamejs
       async function encodeRenderedBufferToMp3(renderedBuffer) {
         if (
@@ -447,6 +859,8 @@ document.addEventListener("DOMContentLoaded", function () {
         ) {
           throw new Error("lamejs non chargé");
         }
+
+        if (exportAbort.canceled) throw new Error("Export cancelled");
 
         function floatTo16BitPCM(float32Array) {
           const l = float32Array.length;
@@ -475,6 +889,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const mp3Chunks = [];
 
         for (let i = 0; i < renderedBuffer.length; i += blockSize) {
+          if (exportAbort.canceled) throw new Error("Export cancelled");
           // Calculer la taille réelle du chunk en tenant compte de la fin du buffer
           const chunkSize = Math.min(blockSize, renderedBuffer.length - i);
           const leftChunkRaw = left.subarray(i, i + chunkSize);
@@ -500,17 +915,25 @@ document.addEventListener("DOMContentLoaded", function () {
               if (rightChunk) paddedRight.set(rightChunk);
               try {
                 const mp3buf = mp3encoder.encodeBuffer(paddedLeft, paddedRight);
-                if (mp3buf && mp3buf.length > 0) mp3Chunks.push(new Uint8Array(mp3buf));
+                if (mp3buf && mp3buf.length > 0)
+                  mp3Chunks.push(new Uint8Array(mp3buf));
               } catch (encErr) {
-                if (window.__pitcherDebug) window.__pitcherDebug.log('encodeBuffer error (padded stereo): ' + encErr.message);
+                if (window.__pitcherDebug)
+                  window.__pitcherDebug.log(
+                    "encodeBuffer error (padded stereo): " + encErr.message
+                  );
                 throw encErr;
               }
             } else {
               try {
                 const mp3buf = mp3encoder.encodeBuffer(paddedLeft);
-                if (mp3buf && mp3buf.length > 0) mp3Chunks.push(new Uint8Array(mp3buf));
+                if (mp3buf && mp3buf.length > 0)
+                  mp3Chunks.push(new Uint8Array(mp3buf));
               } catch (encErr) {
-                if (window.__pitcherDebug) window.__pitcherDebug.log('encodeBuffer error (padded mono): ' + encErr.message);
+                if (window.__pitcherDebug)
+                  window.__pitcherDebug.log(
+                    "encodeBuffer error (padded mono): " + encErr.message
+                  );
                 throw encErr;
               }
             }
@@ -519,13 +942,18 @@ document.addEventListener("DOMContentLoaded", function () {
             try {
               if (channels > 1) {
                 const mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
-                if (mp3buf && mp3buf.length > 0) mp3Chunks.push(new Uint8Array(mp3buf));
+                if (mp3buf && mp3buf.length > 0)
+                  mp3Chunks.push(new Uint8Array(mp3buf));
               } else {
                 const mp3buf = mp3encoder.encodeBuffer(leftChunk);
-                if (mp3buf && mp3buf.length > 0) mp3Chunks.push(new Uint8Array(mp3buf));
+                if (mp3buf && mp3buf.length > 0)
+                  mp3Chunks.push(new Uint8Array(mp3buf));
               }
             } catch (encErr) {
-              if (window.__pitcherDebug) window.__pitcherDebug.log('encodeBuffer error: ' + encErr.message);
+              if (window.__pitcherDebug)
+                window.__pitcherDebug.log(
+                  "encodeBuffer error: " + encErr.message
+                );
               throw encErr;
             }
           }
@@ -545,6 +973,8 @@ document.addEventListener("DOMContentLoaded", function () {
         const decoded = await audioProcessor.audioContext.decodeAudioData(
           arrayBuffer.slice(0)
         );
+
+        if (exportAbort.canceled) throw new Error("Export cancelled");
 
         const playbackRate =
           parseFloat(document.getElementById("pitchSpeed").value) || 1;
@@ -641,7 +1071,10 @@ document.addEventListener("DOMContentLoaded", function () {
         offlineReverbGain.connect(offlineContext.destination);
 
         source.start(preRollSeconds);
+        if (exportAbort.canceled) throw new Error("Export cancelled");
         const renderedBuffer = await offlineContext.startRendering();
+
+        if (exportAbort.canceled) throw new Error("Export cancelled");
 
         try {
           const mp3Blob = await encodeRenderedBufferToMp3(renderedBuffer);
@@ -680,6 +1113,7 @@ document.addEventListener("DOMContentLoaded", function () {
           const zip = new JSZip();
           let i = 0;
           for (const [name, file] of audioFiles.entries()) {
+            if (exportAbort.canceled) break;
             i++;
             btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Export ${i}/${audioFiles.size}...`;
             const mp3Blob = await processFileToMp3(file);
@@ -710,6 +1144,14 @@ document.addEventListener("DOMContentLoaded", function () {
         btn.disabled = false;
         btn.innerHTML =
           '<i class="fas fa-download"></i> Exporter en MP3 (192kbps)';
+        // hide and cleanup cancel button
+        try {
+          if (cancelBtn) {
+            cancelBtn.style.display = "none";
+            cancelBtn.disabled = true;
+            cancelBtn.removeEventListener("click", onCancelClick);
+          }
+        } catch (e) {}
       }
     });
 
