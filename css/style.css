@@ -843,6 +843,7 @@ input[type="range"] {
   appearance: none;
   -webkit-appearance: none;
   cursor: pointer;
+  accent-color: #ff5500;
 }
 
 input[type="range"]::-webkit-slider-thumb {
@@ -1062,6 +1063,7 @@ input[type="range"]::-moz-range-thumb {
   padding: 0;
   position: relative;
   z-index: 1;
+  accent-color: #ff5500;
 }
 
 /* Webkit (Chrome, Safari) Track */
@@ -1078,12 +1080,15 @@ input[type="range"]::-moz-range-thumb {
 /* Webkit (Chrome, Safari) Thumb - Orange glowing dot */
 .eq-slider input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
+  appearance: none;
   width: 16px;
   height: 16px;
-  background: linear-gradient(135deg, #ff7733, #ff5500);
+  background: #ff5500 !important;
+  background: linear-gradient(135deg, #ff7733, #ff5500) !important;
   border-radius: 50%;
   margin-left: -6px;
   cursor: grab;
+  border: none;
   box-shadow: 
     0 0 8px rgba(255, 85, 0, 0.6),
     0 0 20px rgba(255, 85, 0, 0.3),
@@ -1119,10 +1124,11 @@ input[type="range"]::-moz-range-thumb {
 .eq-slider input[type="range"]::-moz-range-thumb {
   width: 16px;
   height: 16px;
-  background: linear-gradient(135deg, #ff7733, #ff5500);
+  background: #ff5500 !important;
+  background: linear-gradient(135deg, #ff7733, #ff5500) !important;
   border-radius: 50%;
   cursor: grab;
-  border: none;
+  border: none !important;
   box-shadow: 
     0 0 8px rgba(255, 85, 0, 0.6),
     0 0 20px rgba(255, 85, 0, 0.3),
