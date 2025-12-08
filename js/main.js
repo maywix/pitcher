@@ -767,6 +767,255 @@ document.addEventListener("DOMContentLoaded", function () {
   // Create the EQ UI with default 31 bands
   createEQSliders(31);
 
+  // ==========================================
+  // DJ DECK FUNCTIONALITY
+  // ==========================================
+  const djDeck = document.getElementById('djDeck');
+  const djDisc = document.getElementById('djDisc');
+  const djPowerBtn = document.getElementById('djPowerBtn');
+  const djBackBtn = document.getElementById('djBackBtn');
+  const djForwardBtn = document.getElementById('djForwardBtn');
+  const djCueBtn = document.getElementById('djCueBtn');
+  const djPositionDisplay = document.getElementById('djPosition');
+  const djSpeedDisplay = document.getElementById('djSpeed');
+  const djStatusDisplay = document.getElementById('djStatus');
+  
+  let isDjPowered = false;
+  let isDjDragging = false;
+  let djLastAngle = 0;
+  let djRotation = 0;
+  let djAnimationId = null;
+  let djSpeed = 1.0;
+  
+  // Format time for DJ display
+  function formatDjTime(seconds) {
+    const mins = Math.floor(Math.abs(seconds) / 60);
+    const secs = Math.floor(Math.abs(seconds) % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  
+  // Update DJ display
+  function updateDjDisplay() {
+    if (wavesurfer && wavesurfer.getDuration() > 0) {
+      djPositionDisplay.textContent = formatDjTime(wavesurfer.getCurrentTime());
+    }
+    djSpeedDisplay.textContent = djSpeed.toFixed(2) + 'x';
+  }
+  
+  // Animate the disc rotation while playing
+  function animateDiscRotation() {
+    if (!isDjPowered || !wavesurfer || !wavesurfer.isPlaying()) {
+      return;
+    }
+    
+    // Rotate based on playback speed
+    djRotation += djSpeed * 2;
+    djDisc.style.setProperty('--dj-rotation', djRotation + 'deg');
+    
+    updateDjDisplay();
+    djAnimationId = requestAnimationFrame(animateDiscRotation);
+  }
+  
+  // Start disc animation
+  function startDiscAnimation() {
+    if (djAnimationId) {
+      cancelAnimationFrame(djAnimationId);
+    }
+    animateDiscRotation();
+  }
+  
+  // Stop disc animation
+  function stopDiscAnimation() {
+    if (djAnimationId) {
+      cancelAnimationFrame(djAnimationId);
+      djAnimationId = null;
+    }
+  }
+  
+  // Power button - toggle DJ deck
+  if (djPowerBtn) {
+    djPowerBtn.addEventListener('click', function() {
+      isDjPowered = !isDjPowered;
+      this.classList.toggle('active', isDjPowered);
+      djDeck.classList.toggle('disabled', !isDjPowered);
+      
+      if (isDjPowered) {
+        djStatusDisplay.textContent = 'Prêt';
+        if (wavesurfer && wavesurfer.isPlaying()) {
+          startDiscAnimation();
+        }
+      } else {
+        djStatusDisplay.textContent = 'Éteint';
+        stopDiscAnimation();
+      }
+    });
+  }
+  
+  // Back button - rewind 2 seconds
+  if (djBackBtn) {
+    djBackBtn.addEventListener('click', function() {
+      if (!isDjPowered || !wavesurfer) return;
+      
+      const currentTime = wavesurfer.getCurrentTime();
+      const newTime = Math.max(0, currentTime - 2);
+      wavesurfer.seekTo(newTime / wavesurfer.getDuration());
+      updateDjDisplay();
+      
+      // Visual feedback
+      this.classList.add('active');
+      setTimeout(() => this.classList.remove('active'), 150);
+    });
+  }
+  
+  // Forward button - forward 2 seconds
+  if (djForwardBtn) {
+    djForwardBtn.addEventListener('click', function() {
+      if (!isDjPowered || !wavesurfer) return;
+      
+      const currentTime = wavesurfer.getCurrentTime();
+      const duration = wavesurfer.getDuration();
+      const newTime = Math.min(duration, currentTime + 2);
+      wavesurfer.seekTo(newTime / duration);
+      updateDjDisplay();
+      
+      // Visual feedback
+      this.classList.add('active');
+      setTimeout(() => this.classList.remove('active'), 150);
+    });
+  }
+  
+  // Cue button - go to beginning
+  if (djCueBtn) {
+    djCueBtn.addEventListener('click', function() {
+      if (!isDjPowered || !wavesurfer) return;
+      
+      wavesurfer.seekTo(0);
+      djRotation = 0;
+      djDisc.style.setProperty('--dj-rotation', '0deg');
+      updateDjDisplay();
+      
+      // Visual feedback
+      this.classList.add('active');
+      setTimeout(() => this.classList.remove('active'), 150);
+    });
+  }
+  
+  // Disc scratching / dragging
+  if (djDisc) {
+    // Calculate angle from center of disc
+    function getAngleFromCenter(e, element) {
+      const rect = element.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      
+      return Math.atan2(clientY - centerY, clientX - centerX) * (180 / Math.PI);
+    }
+    
+    function handleDragStart(e) {
+      if (!isDjPowered) return;
+      
+      e.preventDefault();
+      isDjDragging = true;
+      djDisc.classList.add('is-dragging');
+      djLastAngle = getAngleFromCenter(e, djDisc);
+      
+      // Pause playback while scratching
+      if (wavesurfer && wavesurfer.isPlaying()) {
+        wavesurfer.pause();
+        djStatusDisplay.textContent = 'Scratch';
+      }
+    }
+    
+    function handleDragMove(e) {
+      if (!isDjDragging || !isDjPowered) return;
+      
+      e.preventDefault();
+      const currentAngle = getAngleFromCenter(e, djDisc);
+      let deltaAngle = currentAngle - djLastAngle;
+      
+      // Handle angle wrap-around
+      if (deltaAngle > 180) deltaAngle -= 360;
+      if (deltaAngle < -180) deltaAngle += 360;
+      
+      djRotation += deltaAngle;
+      djDisc.style.setProperty('--dj-rotation', djRotation + 'deg');
+      djLastAngle = currentAngle;
+      
+      // Scrub the audio based on rotation
+      if (wavesurfer && wavesurfer.getDuration() > 0) {
+        const scrubAmount = deltaAngle / 360; // Full rotation = 1 second
+        const currentTime = wavesurfer.getCurrentTime();
+        const duration = wavesurfer.getDuration();
+        const newTime = Math.max(0, Math.min(duration, currentTime + scrubAmount));
+        wavesurfer.seekTo(newTime / duration);
+        updateDjDisplay();
+      }
+    }
+    
+    function handleDragEnd(e) {
+      if (!isDjDragging) return;
+      
+      isDjDragging = false;
+      djDisc.classList.remove('is-dragging');
+      
+      if (isDjPowered && wavesurfer) {
+        djStatusDisplay.textContent = 'Lecture';
+        wavesurfer.play();
+      }
+    }
+    
+    // Mouse events
+    djDisc.addEventListener('mousedown', handleDragStart);
+    document.addEventListener('mousemove', handleDragMove);
+    document.addEventListener('mouseup', handleDragEnd);
+    
+    // Touch events
+    djDisc.addEventListener('touchstart', handleDragStart, { passive: false });
+    document.addEventListener('touchmove', handleDragMove, { passive: false });
+    document.addEventListener('touchend', handleDragEnd);
+  }
+  
+  // Sync DJ deck with wavesurfer events
+  wavesurfer.on('play', function() {
+    if (isDjPowered) {
+      djStatusDisplay.textContent = 'Lecture';
+      startDiscAnimation();
+    }
+  });
+  
+  wavesurfer.on('pause', function() {
+    if (isDjPowered) {
+      djStatusDisplay.textContent = 'Pause';
+      stopDiscAnimation();
+    }
+  });
+  
+  wavesurfer.on('finish', function() {
+    if (isDjPowered) {
+      djStatusDisplay.textContent = 'Terminé';
+      stopDiscAnimation();
+    }
+  });
+  
+  wavesurfer.on('seek', function() {
+    updateDjDisplay();
+  });
+  
+  // Sync speed with pitch control
+  const pitchSpeedSlider = document.getElementById('pitchSpeed');
+  if (pitchSpeedSlider) {
+    pitchSpeedSlider.addEventListener('input', function() {
+      djSpeed = parseFloat(this.value);
+      updateDjDisplay();
+    });
+  }
+  
+  // Initialize DJ deck display
+  updateDjDisplay();
+
   // Gestion de la liste des fichiers
   function updateFilesList() {
     const filesList = document.getElementById("audioFilesList");
