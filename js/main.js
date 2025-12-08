@@ -1410,6 +1410,9 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       const btn = this;
+      const formatSelect = document.getElementById("exportFormat");
+      const selectedFormat = formatSelect.value;
+      
       btn.disabled = true;
       btn.innerHTML =
         '<i class="fas fa-spinner fa-spin"></i> Export en cours...';
@@ -1430,8 +1433,43 @@ document.addEventListener("DOMContentLoaded", function () {
         cancelBtn.addEventListener("click", onCancelClick);
       }
 
+      // Parse format settings
+      function parseFormatSettings(format) {
+        const [type, quality] = format.split('-');
+        return {
+          type: type,
+          quality: quality ? parseInt(quality) : null,
+          extension: getExtension(type),
+          mimeType: getMimeType(type)
+        };
+      }
+      
+      function getExtension(type) {
+        const extensions = {
+          'mp3': '.mp3',
+          'wav': '.wav',
+          'ogg': '.ogg',
+          'flac': '.flac',
+          'aac': '.m4a',
+          'webm': '.webm'
+        };
+        return extensions[type] || '.mp3';
+      }
+      
+      function getMimeType(type) {
+        const mimeTypes = {
+          'mp3': 'audio/mpeg',
+          'wav': 'audio/wav',
+          'ogg': 'audio/ogg',
+          'flac': 'audio/flac',
+          'aac': 'audio/mp4',
+          'webm': 'audio/webm'
+        };
+        return mimeTypes[type] || 'audio/mpeg';
+      }
+
       // helper: encode rendered AudioBuffer to MP3 Blob using lamejs
-      async function encodeRenderedBufferToMp3(renderedBuffer) {
+      async function encodeToMp3(renderedBuffer, kbps = 192) {
         if (
           typeof lamejs === "undefined" &&
           typeof window.Mp3Encoder === "undefined"
@@ -1446,7 +1484,6 @@ document.addEventListener("DOMContentLoaded", function () {
           const int16 = new Int16Array(l);
           for (let i = 0; i < l; i++) {
             let s = Math.max(-1, Math.min(1, float32Array[i]));
-            // Ajout d'une vérification pour éviter les valeurs NaN
             if (isNaN(s)) s = 0;
             int16[i] = s < 0 ? Math.floor(s * 0x8000) : Math.floor(s * 0x7fff);
           }
@@ -1459,7 +1496,6 @@ document.addEventListener("DOMContentLoaded", function () {
           (window.lamejs && window.lamejs.Mp3Encoder);
         const channels = renderedBuffer.numberOfChannels;
         const sampleRate = renderedBuffer.sampleRate;
-        const kbps = 192;
         const mp3encoder = new Mp3Encoder(channels, sampleRate, kbps);
 
         const left = renderedBuffer.getChannelData(0);
@@ -1469,71 +1505,43 @@ document.addEventListener("DOMContentLoaded", function () {
 
         for (let i = 0; i < renderedBuffer.length; i += blockSize) {
           if (exportAbort.canceled) throw new Error("Export cancelled");
-          // Calculer la taille réelle du chunk en tenant compte de la fin du buffer
           const chunkSize = Math.min(blockSize, renderedBuffer.length - i);
           const leftChunkRaw = left.subarray(i, i + chunkSize);
           const leftChunk = floatTo16BitPCM(leftChunkRaw);
 
-          // Si stéréo mais pas de canal droit présent, remplir avec des zéros
           let rightChunk = null;
           if (channels > 1) {
             if (right) {
               const rightChunkRaw = right.subarray(i, i + chunkSize);
               rightChunk = floatTo16BitPCM(rightChunkRaw);
             } else {
-              rightChunk = new Int16Array(chunkSize); // silence
+              rightChunk = new Int16Array(chunkSize);
             }
           }
 
-          // Si le chunk est plus petit que blockSize, on pad avec des zéros
           if (chunkSize < blockSize) {
             const paddedLeft = new Int16Array(blockSize);
             paddedLeft.set(leftChunk);
             if (channels > 1) {
               const paddedRight = new Int16Array(blockSize);
               if (rightChunk) paddedRight.set(rightChunk);
-              try {
-                const mp3buf = mp3encoder.encodeBuffer(paddedLeft, paddedRight);
-                if (mp3buf && mp3buf.length > 0)
-                  mp3Chunks.push(new Uint8Array(mp3buf));
-              } catch (encErr) {
-                if (window.__pitcherDebug)
-                  window.__pitcherDebug.log(
-                    "encodeBuffer error (padded stereo): " + encErr.message
-                  );
-                throw encErr;
-              }
+              const mp3buf = mp3encoder.encodeBuffer(paddedLeft, paddedRight);
+              if (mp3buf && mp3buf.length > 0)
+                mp3Chunks.push(new Uint8Array(mp3buf));
             } else {
-              try {
-                const mp3buf = mp3encoder.encodeBuffer(paddedLeft);
-                if (mp3buf && mp3buf.length > 0)
-                  mp3Chunks.push(new Uint8Array(mp3buf));
-              } catch (encErr) {
-                if (window.__pitcherDebug)
-                  window.__pitcherDebug.log(
-                    "encodeBuffer error (padded mono): " + encErr.message
-                  );
-                throw encErr;
-              }
+              const mp3buf = mp3encoder.encodeBuffer(paddedLeft);
+              if (mp3buf && mp3buf.length > 0)
+                mp3Chunks.push(new Uint8Array(mp3buf));
             }
           } else {
-            // chunkSize === blockSize -> pas besoin de padding
-            try {
-              if (channels > 1) {
-                const mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
-                if (mp3buf && mp3buf.length > 0)
-                  mp3Chunks.push(new Uint8Array(mp3buf));
-              } else {
-                const mp3buf = mp3encoder.encodeBuffer(leftChunk);
-                if (mp3buf && mp3buf.length > 0)
-                  mp3Chunks.push(new Uint8Array(mp3buf));
-              }
-            } catch (encErr) {
-              if (window.__pitcherDebug)
-                window.__pitcherDebug.log(
-                  "encodeBuffer error: " + encErr.message
-                );
-              throw encErr;
+            if (channels > 1) {
+              const mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
+              if (mp3buf && mp3buf.length > 0)
+                mp3Chunks.push(new Uint8Array(mp3buf));
+            } else {
+              const mp3buf = mp3encoder.encodeBuffer(leftChunk);
+              if (mp3buf && mp3buf.length > 0)
+                mp3Chunks.push(new Uint8Array(mp3buf));
             }
           }
         }
@@ -1545,9 +1553,135 @@ document.addEventListener("DOMContentLoaded", function () {
         return new Blob(mp3Chunks, { type: "audio/mpeg" });
       }
 
-      // helper: process a single File -> MP3 Blob (applies current EQ/reverb/pitch)
-      async function processFileToMp3(file) {
-        // decode file
+      // helper: encode to WAV
+      function encodeToWav(renderedBuffer, bitDepth = 16) {
+        const numChannels = renderedBuffer.numberOfChannels;
+        const sampleRate = renderedBuffer.sampleRate;
+        const length = renderedBuffer.length;
+        
+        let bytesPerSample;
+        let formatType;
+        
+        if (bitDepth === 32) {
+          bytesPerSample = 4;
+          formatType = 3; // IEEE float
+        } else if (bitDepth === 24) {
+          bytesPerSample = 3;
+          formatType = 1; // PCM
+        } else {
+          bytesPerSample = 2;
+          formatType = 1; // PCM
+          bitDepth = 16;
+        }
+        
+        const blockAlign = numChannels * bytesPerSample;
+        const byteRate = sampleRate * blockAlign;
+        const dataSize = length * blockAlign;
+        const bufferSize = 44 + dataSize;
+        
+        const buffer = new ArrayBuffer(bufferSize);
+        const view = new DataView(buffer);
+        
+        // WAV header
+        const writeString = (offset, str) => {
+          for (let i = 0; i < str.length; i++) {
+            view.setUint8(offset + i, str.charCodeAt(i));
+          }
+        };
+        
+        writeString(0, 'RIFF');
+        view.setUint32(4, bufferSize - 8, true);
+        writeString(8, 'WAVE');
+        writeString(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, formatType, true);
+        view.setUint16(22, numChannels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, byteRate, true);
+        view.setUint16(32, blockAlign, true);
+        view.setUint16(34, bitDepth, true);
+        writeString(36, 'data');
+        view.setUint32(40, dataSize, true);
+        
+        // Write audio data
+        let offset = 44;
+        for (let i = 0; i < length; i++) {
+          for (let ch = 0; ch < numChannels; ch++) {
+            const sample = renderedBuffer.getChannelData(ch)[i];
+            
+            if (bitDepth === 32) {
+              view.setFloat32(offset, sample, true);
+              offset += 4;
+            } else if (bitDepth === 24) {
+              const s = Math.max(-1, Math.min(1, sample));
+              const val = Math.floor(s * 0x7FFFFF);
+              view.setUint8(offset, val & 0xFF);
+              view.setUint8(offset + 1, (val >> 8) & 0xFF);
+              view.setUint8(offset + 2, (val >> 16) & 0xFF);
+              offset += 3;
+            } else {
+              const s = Math.max(-1, Math.min(1, sample));
+              const val = s < 0 ? Math.floor(s * 0x8000) : Math.floor(s * 0x7FFF);
+              view.setInt16(offset, val, true);
+              offset += 2;
+            }
+          }
+        }
+        
+        return new Blob([buffer], { type: 'audio/wav' });
+      }
+
+      // helper: encode using MediaRecorder for OGG, WebM, AAC
+      async function encodeWithMediaRecorder(renderedBuffer, mimeType, targetBitrate = 192000) {
+        return new Promise((resolve, reject) => {
+          // Create an offline audio context to play the buffer
+          const audioContext = new AudioContext({ sampleRate: renderedBuffer.sampleRate });
+          const dest = audioContext.createMediaStreamDestination();
+          
+          const source = audioContext.createBufferSource();
+          source.buffer = renderedBuffer;
+          source.connect(dest);
+          
+          // Determine best mime type
+          let actualMimeType = mimeType;
+          const mimeOptions = [mimeType, 'audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/webm', 'audio/ogg'];
+          for (const option of mimeOptions) {
+            if (MediaRecorder.isTypeSupported(option)) {
+              actualMimeType = option;
+              break;
+            }
+          }
+          
+          const recorder = new MediaRecorder(dest.stream, {
+            mimeType: actualMimeType,
+            audioBitsPerSecond: targetBitrate
+          });
+          
+          const chunks = [];
+          recorder.ondataavailable = (e) => {
+            if (e.data.size > 0) chunks.push(e.data);
+          };
+          
+          recorder.onstop = () => {
+            audioContext.close();
+            resolve(new Blob(chunks, { type: actualMimeType }));
+          };
+          
+          recorder.onerror = (e) => {
+            audioContext.close();
+            reject(e.error);
+          };
+          
+          recorder.start();
+          source.start();
+          source.onended = () => {
+            setTimeout(() => recorder.stop(), 100);
+          };
+        });
+      }
+
+      // Main processing function
+      async function processFile(file, formatSettings) {
         const arrayBuffer = await file.arrayBuffer();
         const decoded = await audioProcessor.audioContext.decodeAudioData(
           arrayBuffer.slice(0)
@@ -1557,7 +1691,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
         const playbackRate =
           parseFloat(document.getElementById("pitchSpeed").value) || 1;
-        // pre-roll (silence before start) in seconds
         const preRollSeconds =
           parseFloat(
             document.getElementById("preRoll")
@@ -1566,7 +1699,6 @@ document.addEventListener("DOMContentLoaded", function () {
           ) || 0;
         const sampleRate = decoded.sampleRate;
         const preRollSamples = Math.ceil(preRollSeconds * sampleRate);
-        // offline length must account for pre-roll plus slowed/sped audio duration
         const offlineLength = Math.max(
           1,
           Math.ceil(preRollSamples + decoded.length / playbackRate)
@@ -1655,32 +1787,54 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (exportAbort.canceled) throw new Error("Export cancelled");
 
-        try {
-          const mp3Blob = await encodeRenderedBufferToMp3(renderedBuffer);
-          return mp3Blob;
-        } catch (encodeErr) {
-          if (window.__pitcherDebug) {
-            window.__pitcherDebug.log(
-              "MP3 encoding error: " +
-                (encodeErr && encodeErr.message
-                  ? encodeErr.message
-                  : String(encodeErr))
-            );
-          }
-          throw encodeErr;
+        // Encode based on format
+        switch (formatSettings.type) {
+          case 'mp3':
+            return await encodeToMp3(renderedBuffer, formatSettings.quality || 192);
+          
+          case 'wav':
+            return encodeToWav(renderedBuffer, formatSettings.quality || 16);
+          
+          case 'ogg':
+            try {
+              return await encodeWithMediaRecorder(renderedBuffer, 'audio/ogg;codecs=opus', (formatSettings.quality || 192) * 1000);
+            } catch (e) {
+              console.warn('OGG export failed, falling back to WebM:', e);
+              return await encodeWithMediaRecorder(renderedBuffer, 'audio/webm;codecs=opus', (formatSettings.quality || 192) * 1000);
+            }
+          
+          case 'flac':
+            // FLAC encoding requires specialized library, fallback to WAV 24-bit
+            console.warn('FLAC export not fully supported, exporting as high-quality WAV');
+            return encodeToWav(renderedBuffer, 24);
+          
+          case 'aac':
+            try {
+              return await encodeWithMediaRecorder(renderedBuffer, 'audio/mp4;codecs=mp4a.40.2', (formatSettings.quality || 192) * 1000);
+            } catch (e) {
+              console.warn('AAC export failed, falling back to MP3:', e);
+              return await encodeToMp3(renderedBuffer, formatSettings.quality || 192);
+            }
+          
+          case 'webm':
+            return await encodeWithMediaRecorder(renderedBuffer, 'audio/webm;codecs=opus', 192000);
+          
+          default:
+            return await encodeToMp3(renderedBuffer, 192);
         }
       }
 
+      const formatSettings = parseFormatSettings(selectedFormat);
+
       try {
         if (audioFiles.size === 1) {
-          // single file: process and download directly (keep original base name, change extension to .mp3)
           const [[name, file]] = Array.from(audioFiles.entries());
-          const mp3Blob = await processFileToMp3(file);
-          const url = URL.createObjectURL(mp3Blob);
+          const exportedBlob = await processFile(file, formatSettings);
+          const url = URL.createObjectURL(exportedBlob);
           const a = document.createElement("a");
           a.href = url;
           const baseName = name.replace(/\.[^/.]+$/, "");
-          const finalName = baseName + ".mp3";
+          const finalName = baseName + formatSettings.extension;
           a.download = finalName;
           document.body.appendChild(a);
           a.click();
@@ -1695,10 +1849,10 @@ document.addEventListener("DOMContentLoaded", function () {
             if (exportAbort.canceled) break;
             i++;
             btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Export ${i}/${audioFiles.size}...`;
-            const mp3Blob = await processFileToMp3(file);
+            const exportedBlob = await processFile(file, formatSettings);
             const baseName = name.replace(/\.[^/.]+$/, "");
-            const finalName = baseName + ".mp3";
-            zip.file(finalName, mp3Blob);
+            const finalName = baseName + formatSettings.extension;
+            zip.file(finalName, exportedBlob);
           }
 
           btn.innerHTML =
@@ -1722,7 +1876,7 @@ document.addEventListener("DOMContentLoaded", function () {
       } finally {
         btn.disabled = false;
         btn.innerHTML =
-          '<i class="fas fa-download"></i> Exporter en MP3 (192kbps)';
+          '<i class="fas fa-download"></i> <span>Exporter</span>';
         // hide and cleanup cancel button
         try {
           if (cancelBtn) {

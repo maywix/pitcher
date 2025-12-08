@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pitcher Pro - Maywix | Audio Effects Studio</title>
     <meta name="description" content="Pitcher Pro - Un studio audio professionnel en ligne pour modifier vos sons avec des effets prédéfinis, enregistrement en direct et plus encore." />
-    <link rel="stylesheet" href="css/style.css" />
+    <link rel="stylesheet" href="css/style.min.css" />
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
@@ -503,9 +503,28 @@
         <section class="export-section">
           <div class="export-options">
             <select id="exportFormat" class="export-select">
-              <option value="mp3-192">MP3 192 kbps</option>
-              <option value="mp3-320">MP3 320 kbps</option>
-              <option value="wav">WAV (non compressé)</option>
+              <optgroup label="MP3 (Lossy)">
+                <option value="mp3-64">MP3 64 kbps (Voix/Podcast)</option>
+                <option value="mp3-128">MP3 128 kbps (Standard)</option>
+                <option value="mp3-192" selected>MP3 192 kbps (Haute qualité)</option>
+                <option value="mp3-256">MP3 256 kbps (Très haute qualité)</option>
+                <option value="mp3-320">MP3 320 kbps (Maximum)</option>
+              </optgroup>
+              <optgroup label="WAV (Lossless)">
+                <option value="wav-16">WAV 16-bit (CD Quality)</option>
+                <option value="wav-24">WAV 24-bit (Studio)</option>
+                <option value="wav-32">WAV 32-bit Float (Pro)</option>
+              </optgroup>
+              <optgroup label="Autres formats">
+                <option value="ogg-128">OGG Vorbis 128 kbps</option>
+                <option value="ogg-192">OGG Vorbis 192 kbps</option>
+                <option value="ogg-320">OGG Vorbis 320 kbps</option>
+                <option value="flac">FLAC (Lossless compressé)</option>
+                <option value="aac-128">AAC 128 kbps</option>
+                <option value="aac-192">AAC 192 kbps</option>
+                <option value="aac-256">AAC 256 kbps</option>
+                <option value="webm">WebM Audio (Opus)</option>
+              </optgroup>
             </select>
           </div>
           <button id="exportBtn" class="export-btn">
@@ -539,9 +558,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/ffmpeg.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="js/audio-processor.js"></script>
-    <script src="js/presets.js"></script>
-    <script src="js/recorder.js"></script>
-    <script src="js/main.js"></script>
+    <script src="js/app.min.js"></script>
   </body>
 </html>
