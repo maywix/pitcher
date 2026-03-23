@@ -1,0 +1,9 @@
+services:
+  pitcher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pitcher-pro
+    restart: unless-stopped
+    ports:
+      - "8080:80"

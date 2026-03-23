@@ -1,0 +1,7 @@
+.git
+.DS_Store
+Dockerfile
+docker-compose.yml
+deploy-docker.sh
+nginx/*
+!nginx/default.conf

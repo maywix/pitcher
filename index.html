@@ -1,18 +1,24 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pitcher Pro - Maywix | Audio Effects Studio</title>
-    <meta name="description" content="Pitcher Pro - Un studio audio professionnel en ligne pour modifier vos sons avec des effets prédéfinis, enregistrement en direct et plus encore." />
+    <meta
+      name="description"
+      content="Pitcher Pro - Un studio audio professionnel en ligne pour modifier vos sons avec des effets prédéfinis, enregistrement en direct et plus encore."
+    />
     <link rel="stylesheet" href="css/style.css" />
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
     />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <div class="app-container" data-mode="simple">
@@ -28,10 +34,14 @@
               <span class="logo-subtitle">by Maywix</span>
             </div>
           </div>
-          
+
           <!-- Mode Toggle -->
           <div class="mode-toggle">
-            <button class="mode-btn active" id="simpleModeBtn" data-mode="simple">
+            <button
+              class="mode-btn active"
+              id="simpleModeBtn"
+              data-mode="simple"
+            >
               <i class="fas fa-sliders-h"></i>
               <span>Simple</span>
             </button>
@@ -40,7 +50,7 @@
               <span>Avancé</span>
             </button>
           </div>
-          
+
           <!-- Nav for Advanced Mode -->
           <nav class="header-nav advanced-only">
             <button class="nav-btn" id="tabImport" data-tab="import">
@@ -52,9 +62,13 @@
               <span>Enregistrer</span>
             </button>
           </nav>
-          
+
           <div class="header-actions">
-            <a href="https://soundcloud.com/maywix" target="_blank" class="social-btn">
+            <a
+              href="https://soundcloud.com/maywix"
+              target="_blank"
+              class="social-btn"
+            >
               <i class="fab fa-soundcloud"></i>
             </a>
           </div>
@@ -87,7 +101,11 @@
           <div class="files-panel" id="filesPanel">
             <div class="panel-header">
               <h3><i class="fas fa-list-music"></i> Fichiers chargés</h3>
-              <button class="btn-icon" id="clearFilesBtn" title="Vider la liste">
+              <button
+                class="btn-icon"
+                id="clearFilesBtn"
+                title="Vider la liste"
+              >
                 <i class="fas fa-trash"></i>
               </button>
             </div>
@@ -102,7 +120,7 @@
               <canvas id="recordVisualizer"></canvas>
               <div class="record-timer" id="recordTimer">00:00:00</div>
             </div>
-            
+
             <div class="record-controls">
               <button class="record-btn" id="recordBtn">
                 <i class="fas fa-microphone"></i>
@@ -115,7 +133,10 @@
             </div>
 
             <div class="record-info">
-              <p><i class="fas fa-info-circle"></i> Les effets seront appliqués en temps réel pendant l'enregistrement</p>
+              <p>
+                <i class="fas fa-info-circle"></i> Les effets seront appliqués
+                en temps réel pendant l'enregistrement
+              </p>
             </div>
 
             <!-- Recorded Files -->
@@ -132,7 +153,7 @@
           <div class="audio-visualizer-container">
             <canvas id="audioVisualizer"></canvas>
           </div>
-          
+
           <div class="waveform-container">
             <div class="waveform" id="waveform"></div>
             <div class="waveform-overlay" id="waveformOverlay">
@@ -145,14 +166,18 @@
               <button class="transport-btn" id="stopBtn" title="Stop">
                 <i class="fas fa-stop"></i>
               </button>
-              <button class="transport-btn play-btn" id="playBtn" title="Play/Pause">
+              <button
+                class="transport-btn play-btn"
+                id="playBtn"
+                title="Play/Pause"
+              >
                 <i class="fas fa-play"></i>
               </button>
               <button class="transport-btn" id="loopBtn" title="Boucle">
                 <i class="fas fa-redo"></i>
               </button>
             </div>
-            
+
             <div class="time-display">
               <span id="currentTime">00:00</span>
               <span class="time-separator">/</span>
@@ -163,7 +188,14 @@
               <button class="transport-btn" id="muteBtn" title="Mute">
                 <i class="fas fa-volume-up"></i>
               </button>
-              <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="1" />
+              <input
+                type="range"
+                id="volumeSlider"
+                min="0"
+                max="1"
+                step="0.01"
+                value="1"
+              />
             </div>
           </div>
         </section>
@@ -225,7 +257,10 @@
                       <i class="fas fa-volume-up"></i>
                       <span>Earrape</span>
                     </button>
-                    <button class="preset-btn danger" data-preset="earrape-light">
+                    <button
+                      class="preset-btn danger"
+                      data-preset="earrape-light"
+                    >
                       <i class="fas fa-volume-down"></i>
                       <span>Earrape Light</span>
                     </button>
@@ -241,7 +276,10 @@
                       <i class="fas fa-bell"></i>
                       <span>Aigus Boost</span>
                     </button>
-                    <button class="preset-btn" data-preset="treble-boost-extreme">
+                    <button
+                      class="preset-btn"
+                      data-preset="treble-boost-extreme"
+                    >
                       <i class="fas fa-wind"></i>
                       <span>Aigus Extrême</span>
                     </button>
@@ -373,13 +411,25 @@
                   </div>
                   <div class="dj-deck__side">
                     <div class="dj-controls">
-                      <button class="dj-btn" id="djPowerBtn" title="Alimentation">
+                      <button
+                        class="dj-btn"
+                        id="djPowerBtn"
+                        title="Alimentation"
+                      >
                         <i class="fas fa-power-off"></i>
                       </button>
-                      <button class="dj-btn" id="djBackBtn" title="Reculer de 2s">
+                      <button
+                        class="dj-btn"
+                        id="djBackBtn"
+                        title="Reculer de 2s"
+                      >
                         <i class="fas fa-backward"></i>
                       </button>
-                      <button class="dj-btn" id="djForwardBtn" title="Avancer de 2s">
+                      <button
+                        class="dj-btn"
+                        id="djForwardBtn"
+                        title="Avancer de 2s"
+                      >
                         <i class="fas fa-forward"></i>
                       </button>
                       <button class="dj-btn" id="djCueBtn" title="Retour début">
@@ -405,7 +455,9 @@
           <!-- Pre-Roll -->
           <div class="effect-panel">
             <div class="panel-header collapsible" id="prerollToggle">
-              <h3><i class="fas fa-hourglass-start"></i> Décalage début (pré-roll)</h3>
+              <h3>
+                <i class="fas fa-hourglass-start"></i> Décalage début (pré-roll)
+              </h3>
               <i class="fas fa-chevron-down toggle-icon"></i>
             </div>
             <div class="panel-content expanded" id="prerollContent">
@@ -422,7 +474,10 @@
                   step="1"
                   value="0"
                 />
-                <p class="help-text">Ajoute du silence avant le début du son à l'export (en secondes)</p>
+                <p class="help-text">
+                  Ajoute du silence avant le début du son à l'export (en
+                  secondes)
+                </p>
               </div>
             </div>
           </div>
@@ -468,7 +523,10 @@
           <!-- Equalizer -->
           <div class="effect-panel eq-panel">
             <div class="panel-header collapsible" id="eqToggle">
-              <h3><i class="fas fa-sliders-h"></i> Égaliseur <span id="eqBandCountLabel">31</span> bandes</h3>
+              <h3>
+                <i class="fas fa-sliders-h"></i> Égaliseur
+                <span id="eqBandCountLabel">31</span> bandes
+              </h3>
               <i class="fas fa-chevron-down toggle-icon"></i>
             </div>
             <div class="panel-content expanded" id="eqContent">
@@ -481,16 +539,18 @@
                   <button class="eq-band-btn active" data-bands="31">31</button>
                 </div>
               </div>
-              
+
               <!-- EQ Presets -->
               <div class="eq-controls">
-                <button class="eq-preset-btn active" data-eq="flat">Flat</button>
+                <button class="eq-preset-btn active" data-eq="flat">
+                  Flat
+                </button>
                 <button class="eq-preset-btn" data-eq="bass">Bass+</button>
                 <button class="eq-preset-btn" data-eq="treble">Treble+</button>
                 <button class="eq-preset-btn" data-eq="vocal">Vocal</button>
                 <button class="eq-preset-btn" data-eq="rock">Rock</button>
               </div>
-              
+
               <!-- EQ Sliders Container -->
               <div class="eq-container" id="eqContainer">
                 <!-- EQ sliders will be generated in JavaScript -->
@@ -512,11 +572,19 @@
             <i class="fas fa-download"></i>
             <span>Exporter</span>
           </button>
-          <button id="cancelExportBtn" class="export-btn cancel" style="display: none">
+          <button
+            id="cancelExportBtn"
+            class="export-btn cancel"
+            style="display: none"
+          >
             <i class="fas fa-ban"></i>
             <span>Annuler</span>
           </button>
-          <div class="export-progress" id="exportProgress" style="display: none">
+          <div
+            class="export-progress"
+            id="exportProgress"
+            style="display: none"
+          >
             <div class="progress-bar">
               <div class="progress-fill" id="progressFill"></div>
             </div>
