@@ -81,7 +81,48 @@ function sanitizeAudioSettings(body) {
   };
 }
 
-function buildFilterChain(settings) {
+async function getInputSampleRate(inputPath) {
+  const args = [
+    "-v",
+    "error",
+    "-select_streams",
+    "a:0",
+    "-show_entries",
+    "stream=sample_rate",
+    "-of",
+    "default=noprint_wrappers=1:nokey=1",
+    inputPath,
+  ];
+
+  return await new Promise((resolve, reject) => {
+    const child = spawn("ffprobe", args);
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (data) => {
+      stdout += data.toString();
+    });
+    child.stderr.on("data", (data) => {
+      stderr += data.toString();
+    });
+
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(stderr || `ffprobe exit code ${code}`));
+        return;
+      }
+      const parsed = Number.parseInt(stdout.trim(), 10);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        reject(new Error("invalid sample rate from ffprobe"));
+        return;
+      }
+      resolve(parsed);
+    });
+  });
+}
+
+function buildFilterChain(settings, inputSampleRate) {
   const filters = [];
 
   if (settings.preRollSeconds > 0.001) {
@@ -90,10 +131,13 @@ function buildFilterChain(settings) {
   }
 
   if (Math.abs(settings.playbackRate - 1) > 0.0001) {
-    const rate = settings.playbackRate.toFixed(6);
+    const targetSampleRate = Math.max(
+      8000,
+      Math.min(192000, Math.round(inputSampleRate * settings.playbackRate)),
+    );
     // Coupled mode: speed + pitch change together (true playback-rate behavior)
-    filters.push(`asetrate=sample_rate*${rate}`);
-    filters.push("aresample=sample_rate");
+    filters.push(`asetrate=${targetSampleRate}`);
+    filters.push(`aresample=${inputSampleRate}`);
   }
 
   for (const band of settings.eqBands) {
@@ -308,9 +352,14 @@ app.post("/convert", upload.single("file"), async (req, res) => {
   const format = parseFormat(req.body?.format);
   const bitrate = parseBitrate(req.body?.kbps);
   const audioSettings = sanitizeAudioSettings(req.body);
-  const audioFilter = buildFilterChain(audioSettings);
+  const tempProbeDir = await fs.mkdtemp(path.join(os.tmpdir(), "pitcher-probe-"));
+  const probeInputPath = path.join(tempProbeDir, "input");
 
   try {
+    await fs.writeFile(probeInputPath, file.buffer);
+    const inputSampleRate = await getInputSampleRate(probeInputPath);
+    const audioFilter = buildFilterChain(audioSettings, inputSampleRate);
+
     const { outputBuffer, downloadName } = await convertUploadedFile(
       file,
       format,
@@ -326,6 +375,8 @@ app.post("/convert", upload.single("file"), async (req, res) => {
     res.send(outputBuffer);
   } catch (error) {
     res.status(500).json({ error: "conversion failed", detail: error.message });
+  } finally {
+    await fs.rm(tempProbeDir, { recursive: true, force: true });
   }
 });
 
@@ -339,9 +390,15 @@ app.post("/convert-batch", upload.array("files", 100), async (req, res) => {
   const format = parseFormat(req.body?.format);
   const bitrate = parseBitrate(req.body?.kbps);
   const audioSettings = sanitizeAudioSettings(req.body);
-  const audioFilter = buildFilterChain(audioSettings);
+  let inputSampleRate = 44100;
+  const tempProbeDir = await fs.mkdtemp(path.join(os.tmpdir(), "pitcher-probe-"));
 
   try {
+    const probeInputPath = path.join(tempProbeDir, "input");
+    await fs.writeFile(probeInputPath, files[0].buffer);
+    inputSampleRate = await getInputSampleRate(probeInputPath);
+    const audioFilter = buildFilterChain(audioSettings, inputSampleRate);
+
     const zip = new JSZip();
     const usedNames = new Set();
     const cpuCount = os.cpus()?.length || 2;
@@ -386,6 +443,8 @@ app.post("/convert-batch", upload.array("files", 100), async (req, res) => {
     res
       .status(500)
       .json({ error: "batch conversion failed", detail: error.message });
+  } finally {
+    await fs.rm(tempProbeDir, { recursive: true, force: true });
   }
 });
 
@@ -402,7 +461,8 @@ app.post(
     const format = parseFormat(req.body?.format);
     const bitrate = parseBitrate(req.body?.kbps);
     const audioSettings = sanitizeAudioSettings(req.body);
-    const audioFilter = buildFilterChain(audioSettings);
+    let inputSampleRate = 44100;
+    const tempProbeDir = await fs.mkdtemp(path.join(os.tmpdir(), "pitcher-probe-"));
 
     const jobId = randomUUID();
     const job = {
@@ -420,6 +480,11 @@ app.post(
 
     (async () => {
       try {
+        const probeInputPath = path.join(tempProbeDir, "input");
+        await fs.writeFile(probeInputPath, files[0].buffer);
+        inputSampleRate = await getInputSampleRate(probeInputPath);
+        const audioFilter = buildFilterChain(audioSettings, inputSampleRate);
+
         const zip = new JSZip();
         const usedNames = new Set();
 
@@ -472,6 +537,8 @@ app.post(
       } catch (error) {
         job.error = error.message;
         job.status = job.canceled ? "cancelled" : "failed";
+      } finally {
+        await fs.rm(tempProbeDir, { recursive: true, force: true });
       }
     })();
 
