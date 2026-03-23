@@ -3,30 +3,28 @@
 set -euo pipefail
 
 PORT="${1:-8080}"
-IMAGE_NAME="pitcher-pro"
-CONTAINER_NAME="pitcher-pro"
 
-echo "[1/5] Remove old image ${IMAGE_NAME} (if exists)..."
-docker image rm -f "${IMAGE_NAME}" >/dev/null 2>&1 || true
+export PORT
 
-if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-  echo "[2/5] Remove old container ${CONTAINER_NAME}..."
-  docker rm -f "${CONTAINER_NAME}" >/dev/null
+if docker compose version >/dev/null 2>&1; then
+  COMPOSE_CMD="docker compose"
+elif command -v docker-compose >/dev/null 2>&1; then
+  COMPOSE_CMD="docker-compose"
 else
-  echo "[2/5] No old container found."
+  echo "Docker Compose non disponible. Installe docker compose plugin ou docker-compose."
+  exit 1
 fi
 
-echo "[3/5] Build image ${IMAGE_NAME} (no cache)..."
-docker build --pull --no-cache -t "${IMAGE_NAME}" .
+echo "[1/4] Stop anciens services compose..."
+$COMPOSE_CMD down --remove-orphans || true
 
-echo "[4/5] Start container on port ${PORT}..."
-docker run -d \
-  --name "${CONTAINER_NAME}" \
-  --restart unless-stopped \
-  -p "${PORT}:80" \
-  "${IMAGE_NAME}" >/dev/null
+echo "[2/4] Build images sans cache..."
+$COMPOSE_CMD build --pull --no-cache
 
-echo "[5/5] Done."
+echo "[3/4] Start services..."
+$COMPOSE_CMD up -d
+
+echo "[4/4] Done."
 echo "Local URL:    http://localhost:${PORT}"
 echo "Network URL:  http://<SERVER_IP>:${PORT}"
-echo "Status check: docker ps --filter 'name=${CONTAINER_NAME}'"
+echo "Status check: $COMPOSE_CMD ps"

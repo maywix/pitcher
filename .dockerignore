@@ -3,5 +3,6 @@
 Dockerfile
 docker-compose.yml
 deploy-docker.sh
+backend/
 nginx/*
 !nginx/default.conf
