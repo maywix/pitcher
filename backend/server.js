@@ -1,12 +1,14 @@
 import express from "express";
 import JSZip from "jszip";
 import multer from "multer";
+import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 const app = express();
+const batchJobs = new Map();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 300 * 1024 * 1024 },
@@ -218,6 +220,27 @@ function mimeByFormat(format) {
   return "audio/mpeg";
 }
 
+function uniqueFileName(name, usedNames) {
+  if (!usedNames.has(name)) {
+    usedNames.add(name);
+    return name;
+  }
+
+  const extMatch = /(\.[^/.]+)$/.exec(name);
+  const ext = extMatch ? extMatch[1] : "";
+  const base = ext ? name.slice(0, -ext.length) : name;
+
+  let index = 2;
+  while (true) {
+    const candidate = `${base} (${index})${ext}`;
+    if (!usedNames.has(candidate)) {
+      usedNames.add(candidate);
+      return candidate;
+    }
+    index += 1;
+  }
+}
+
 async function convertUploadedFile(file, format, bitrate, audioFilter) {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pitcher-"));
   const inputPath = path.join(tempDir, "input");
@@ -306,6 +329,7 @@ app.post("/convert-batch", upload.array("files", 100), async (req, res) => {
 
   try {
     const zip = new JSZip();
+    const usedNames = new Set();
     const cpuCount = os.cpus()?.length || 2;
     const workerCount = Math.min(
       files.length,
@@ -325,7 +349,8 @@ app.post("/convert-batch", upload.array("files", 100), async (req, res) => {
           bitrate,
           audioFilter,
         );
-        zip.file(converted.downloadName, converted.outputBuffer);
+        const uniqueName = uniqueFileName(converted.downloadName, usedNames);
+        zip.file(uniqueName, converted.outputBuffer);
       }
     }
 
@@ -348,6 +373,151 @@ app.post("/convert-batch", upload.array("files", 100), async (req, res) => {
       .status(500)
       .json({ error: "batch conversion failed", detail: error.message });
   }
+});
+
+app.post(
+  "/convert-batch-jobs",
+  upload.array("files", 100),
+  async (req, res) => {
+    const files = req.files;
+    if (!Array.isArray(files) || files.length === 0) {
+      res.status(400).json({ error: "files are required" });
+      return;
+    }
+
+    const format = parseFormat(req.body?.format);
+    const bitrate = parseBitrate(req.body?.kbps);
+    const audioSettings = sanitizeAudioSettings(req.body);
+    const audioFilter = buildFilterChain(audioSettings);
+
+    const jobId = randomUUID();
+    const job = {
+      id: jobId,
+      status: "processing",
+      total: files.length,
+      processed: 0,
+      error: null,
+      zipBuffer: null,
+      canceled: false,
+      createdAt: Date.now(),
+    };
+
+    batchJobs.set(jobId, job);
+
+    (async () => {
+      try {
+        const zip = new JSZip();
+        const usedNames = new Set();
+
+        const cpuCount = os.cpus()?.length || 2;
+        const workerCount = Math.min(
+          files.length,
+          Math.max(1, Math.min(cpuCount - 1, 4)),
+        );
+        let nextIndex = 0;
+
+        async function worker() {
+          while (true) {
+            if (job.canceled) {
+              throw new Error("job cancelled");
+            }
+
+            const index = nextIndex;
+            nextIndex += 1;
+            if (index >= files.length) return;
+
+            const converted = await convertUploadedFile(
+              files[index],
+              format,
+              bitrate,
+              audioFilter,
+            );
+
+            const uniqueName = uniqueFileName(converted.downloadName, usedNames);
+            zip.file(uniqueName, converted.outputBuffer);
+            job.processed += 1;
+          }
+        }
+
+        await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+        if (job.canceled) {
+          job.status = "cancelled";
+          return;
+        }
+
+        job.zipBuffer = await zip.generateAsync({
+          type: "nodebuffer",
+          compression: "DEFLATE",
+          compressionOptions: { level: 1 },
+        });
+        job.status = "done";
+      } catch (error) {
+        job.error = error.message;
+        job.status = job.canceled ? "cancelled" : "failed";
+      }
+    })();
+
+    res.status(202).json({
+      jobId,
+      total: job.total,
+      status: job.status,
+    });
+  },
+);
+
+app.get("/convert-batch-jobs/:jobId/status", (req, res) => {
+  const job = batchJobs.get(req.params.jobId);
+  if (!job) {
+    res.status(404).json({ error: "job not found" });
+    return;
+  }
+
+  res.json({
+    jobId: job.id,
+    status: job.status,
+    total: job.total,
+    processed: job.processed,
+    error: job.error,
+  });
+});
+
+app.get("/convert-batch-jobs/:jobId/download", (req, res) => {
+  const job = batchJobs.get(req.params.jobId);
+  if (!job) {
+    res.status(404).json({ error: "job not found" });
+    return;
+  }
+
+  if (job.status !== "done" || !job.zipBuffer) {
+    res.status(409).json({ error: "job not completed" });
+    return;
+  }
+
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader(
+    "Content-Disposition",
+    'attachment; filename="processed_all.zip"',
+  );
+  res.send(job.zipBuffer);
+
+  setTimeout(() => {
+    batchJobs.delete(job.id);
+  }, 60 * 1000);
+});
+
+app.delete("/convert-batch-jobs/:jobId", (req, res) => {
+  const job = batchJobs.get(req.params.jobId);
+  if (!job) {
+    res.status(404).json({ error: "job not found" });
+    return;
+  }
+
+  job.canceled = true;
+  if (job.status === "processing") {
+    job.status = "cancelled";
+  }
+  res.json({ ok: true, status: job.status });
 });
 
 const port = process.env.PORT || 3000;

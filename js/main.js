@@ -9,6 +9,7 @@ document.addEventListener("DOMContentLoaded", function () {
   let audioRecorder = null;
   // Recorded files list
   let recordedFiles = new Map();
+  let recordedAudioNames = new Map();
   // Equalizer runtime state
   let eqFilters = [];
   let pendingEqGains = [];
@@ -129,17 +130,49 @@ document.addEventListener("DOMContentLoaded", function () {
     e.preventDefault();
   });
 
+  function getUniqueAudioName(desiredName) {
+    if (!audioFiles.has(desiredName)) return desiredName;
+
+    const extMatch = /(\.[^/.]+)$/.exec(desiredName);
+    const ext = extMatch ? extMatch[1] : "";
+    const base = ext ? desiredName.slice(0, -ext.length) : desiredName;
+
+    let index = 2;
+    while (true) {
+      const candidate = `${base} (${index})${ext}`;
+      if (!audioFiles.has(candidate)) return candidate;
+      index += 1;
+    }
+  }
+
+  function addAudioFile(file, desiredName = file.name) {
+    const uniqueName = getUniqueAudioName(desiredName);
+    audioFiles.set(uniqueName, file);
+    return uniqueName;
+  }
+
   // Handle files from both input and drag & drop
   async function handleFiles(files) {
     const validExtensions = [".mp3", ".flac", ".wav", ".aac", ".ogg", ".webm"];
-    let firstFile = null;
+    let firstStoredName = null;
+    let acceptedCount = 0;
+    let rejectedCount = 0;
 
     for (let file of files) {
       const ext = "." + file.name.split(".").pop().toLowerCase();
       if (validExtensions.includes(ext) || file.type.startsWith("audio/")) {
-        audioFiles.set(file.name, file);
-        if (!firstFile) firstFile = file;
+        const storedName = addAudioFile(file, file.name);
+        acceptedCount += 1;
+        if (!firstStoredName) firstStoredName = storedName;
+      } else {
+        rejectedCount += 1;
       }
+    }
+
+    if (rejectedCount > 0) {
+      showNotification(
+        `${acceptedCount}/${files.length} fichier(s) audio ajouté(s)`,
+      );
     }
 
     updateFilesList();
@@ -151,8 +184,8 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     // Load first file if none is currently loaded
-    if (!currentFileName && firstFile) {
-      currentFileName = firstFile.name;
+    if (!currentFileName && firstStoredName) {
+      currentFileName = firstStoredName;
       await playFile(currentFileName);
     }
 
@@ -241,7 +274,8 @@ document.addEventListener("DOMContentLoaded", function () {
     updateRecordedFilesList();
 
     // Also add to main audio files for processing
-    audioFiles.set(file.name, file);
+    const storedName = addAudioFile(file, file.name);
+    recordedAudioNames.set(name, storedName);
     updateFilesList();
 
     // Show success notification
@@ -269,8 +303,9 @@ document.addEventListener("DOMContentLoaded", function () {
       // Load button
       li.querySelector(".load-btn").addEventListener("click", async (e) => {
         e.stopPropagation();
-        currentFileName = file.name;
-        await playFile(file.name);
+        const storedName = recordedAudioNames.get(name) || file.name;
+        currentFileName = storedName;
+        await playFile(storedName);
         switchTab("import");
       });
 
@@ -278,7 +313,9 @@ document.addEventListener("DOMContentLoaded", function () {
       li.querySelector(".delete-btn").addEventListener("click", (e) => {
         e.stopPropagation();
         recordedFiles.delete(name);
-        audioFiles.delete(file.name);
+        const storedName = recordedAudioNames.get(name) || file.name;
+        recordedAudioNames.delete(name);
+        audioFiles.delete(storedName);
         updateRecordedFilesList();
         updateFilesList();
       });
@@ -1227,7 +1264,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const controller = new AbortController();
         backendAbortControllers.push(controller);
 
-        const response = await fetch("/api/convert-batch", {
+        const response = await fetch("/api/convert-batch-jobs", {
           method: "POST",
           body: formData,
           signal: controller.signal,
@@ -1245,7 +1282,88 @@ document.addEventListener("DOMContentLoaded", function () {
           );
         }
 
-        return await response.blob();
+        const created = await response.json();
+        const jobId = created.jobId;
+        if (!jobId) {
+          throw new Error("Job ID manquant pour le batch backend");
+        }
+
+        while (true) {
+          if (exportAbort.canceled) {
+            const cancelController = new AbortController();
+            backendAbortControllers.push(cancelController);
+            try {
+              await fetch(`/api/convert-batch-jobs/${jobId}`, {
+                method: "DELETE",
+                signal: cancelController.signal,
+              });
+            } catch (e) {}
+            throw new Error("Export cancelled");
+          }
+
+          const statusController = new AbortController();
+          backendAbortControllers.push(statusController);
+          const statusResponse = await fetch(
+            `/api/convert-batch-jobs/${jobId}/status`,
+            {
+              method: "GET",
+              signal: statusController.signal,
+            },
+          );
+
+          if (!statusResponse.ok) {
+            let detail = "";
+            try {
+              detail = await statusResponse.text();
+            } catch (e) {
+              detail = "";
+            }
+            throw new Error(
+              `Erreur statut export (${statusResponse.status})${detail ? `: ${detail}` : ""}`,
+            );
+          }
+
+          const statusData = await statusResponse.json();
+          const processed = Number(statusData.processed || 0);
+          const total = Number(statusData.total || entries.length);
+          btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Export fichier ${processed}/${total}...`;
+
+          if (statusData.status === "done") {
+            const downloadController = new AbortController();
+            backendAbortControllers.push(downloadController);
+            const downloadResponse = await fetch(
+              `/api/convert-batch-jobs/${jobId}/download`,
+              {
+                method: "GET",
+                signal: downloadController.signal,
+              },
+            );
+
+            if (!downloadResponse.ok) {
+              let detail = "";
+              try {
+                detail = await downloadResponse.text();
+              } catch (e) {
+                detail = "";
+              }
+              throw new Error(
+                `Téléchargement batch impossible (${downloadResponse.status})${detail ? `: ${detail}` : ""}`,
+              );
+            }
+
+            return await downloadResponse.blob();
+          }
+
+          if (statusData.status === "failed") {
+            throw new Error(statusData.error || "Le job batch a échoué");
+          }
+
+          if (statusData.status === "cancelled") {
+            throw new Error("Export cancelled");
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 700));
+        }
       }
 
       try {
@@ -1274,7 +1392,7 @@ document.addEventListener("DOMContentLoaded", function () {
         } else {
           // multiple files: process all and zip on backend
           const entries = Array.from(audioFiles.entries());
-          btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Export ${entries.length} fichier(s)...`;
+          btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Export fichier 0/${entries.length}...`;
           const zipBlob = await processBatchOnBackend(entries, exportSettings);
           const url = URL.createObjectURL(zipBlob);
           const a = document.createElement("a");
