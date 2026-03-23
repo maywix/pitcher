@@ -1,8 +1,8 @@
 import express from "express";
 import JSZip from "jszip";
 import multer from "multer";
-import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -90,24 +90,10 @@ function buildFilterChain(settings) {
   }
 
   if (Math.abs(settings.playbackRate - 1) > 0.0001) {
-    let remainingRate = settings.playbackRate;
-    const tempoParts = [];
-
-    while (remainingRate > 2.0) {
-      tempoParts.push(2.0);
-      remainingRate /= 2.0;
-    }
-
-    while (remainingRate < 0.5) {
-      tempoParts.push(0.5);
-      remainingRate /= 0.5;
-    }
-
-    tempoParts.push(remainingRate);
-
-    for (const part of tempoParts) {
-      filters.push(`atempo=${part.toFixed(6)}`);
-    }
+    const rate = settings.playbackRate.toFixed(6);
+    // Coupled mode: speed + pitch change together (true playback-rate behavior)
+    filters.push(`asetrate=sample_rate*${rate}`);
+    filters.push("aresample=sample_rate");
   }
 
   for (const band of settings.eqBands) {
@@ -461,7 +447,10 @@ app.post(
               audioFilter,
             );
 
-            const uniqueName = uniqueFileName(converted.downloadName, usedNames);
+            const uniqueName = uniqueFileName(
+              converted.downloadName,
+              usedNames,
+            );
             zip.file(uniqueName, converted.outputBuffer);
             job.processed += 1;
           }
