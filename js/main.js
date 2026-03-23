@@ -1104,6 +1104,11 @@ document.addEventListener("DOMContentLoaded", function () {
       const cancelBtn = document.getElementById("cancelExportBtn");
       function onCancelClick() {
         exportAbort.canceled = true;
+        for (const controller of backendAbortControllers) {
+          try {
+            controller.abort();
+          } catch (e) {}
+        }
         try {
           btn.innerHTML = '<i class="fas fa-ban"></i> Annulation...';
         } catch (e) {}
@@ -1117,8 +1122,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
       const exportFormatEl = document.getElementById("exportFormat");
       const selectedFormat = exportFormatEl ? exportFormatEl.value : "mp3-192";
-      const bitrateMatch = /mp3-(\d+)/i.exec(selectedFormat);
-      const targetKbps = bitrateMatch ? parseInt(bitrateMatch[1], 10) : 192;
+      const parsedFormat = /^([a-z0-9]+)(?:-(\d+))?$/i.exec(selectedFormat);
+      const outputFormat = parsedFormat ? parsedFormat[1].toLowerCase() : "mp3";
+      const bitrateMatch =
+        parsedFormat && parsedFormat[2] ? parsedFormat[2] : null;
+      const targetKbps = bitrateMatch ? parseInt(bitrateMatch, 10) : 192;
 
       const playbackRate =
         parseFloat(document.getElementById("pitchSpeed").value) || 1;
@@ -1132,6 +1140,10 @@ document.addEventListener("DOMContentLoaded", function () {
         currentReverbMix ||
         parseFloat(document.getElementById("reverbMix").value) ||
         0;
+      const reverbSize =
+        currentReverbSize ||
+        parseFloat(document.getElementById("reverbSize").value) ||
+        0.5;
 
       const eqGains = currentEqFreqs.map((_, i) => {
         const liveGain =
@@ -1157,12 +1169,16 @@ document.addEventListener("DOMContentLoaded", function () {
         !hasPreRollProcessing;
 
       const exportSettings = {
+        outputFormat,
         targetKbps,
         playbackRate,
         preRollSeconds,
         reverbMix,
+        reverbSize,
         eqGains,
       };
+
+      const backendAbortControllers = [];
 
       // helper: encode rendered AudioBuffer to MP3 Blob using lamejs
       async function encodeRenderedBufferToMp3(renderedBuffer, kbps = 192) {
@@ -1281,12 +1297,24 @@ document.addEventListener("DOMContentLoaded", function () {
       async function processFileOnBackend(file, originalName, settings) {
         const formData = new FormData();
         formData.append("file", file, originalName);
-        formData.append("format", "mp3");
-        formData.append("kbps", String(settings.targetKbps || 192));
+        formData.append("format", settings.outputFormat || "mp3");
+        if ((settings.outputFormat || "mp3") !== "wav") {
+          formData.append("kbps", String(settings.targetKbps || 192));
+        }
+        formData.append("playbackRate", String(settings.playbackRate || 1));
+        formData.append("preRollSeconds", String(settings.preRollSeconds || 0));
+        formData.append("reverbMix", String(settings.reverbMix || 0));
+        formData.append("reverbSize", String(settings.reverbSize || 0.5));
+        formData.append("eqFreqs", JSON.stringify(currentEqFreqs || []));
+        formData.append("eqGains", JSON.stringify(settings.eqGains || []));
+
+        const controller = new AbortController();
+        backendAbortControllers.push(controller);
 
         const response = await fetch("/api/convert", {
           method: "POST",
           body: formData,
+          signal: controller.signal,
         });
 
         if (!response.ok) {
@@ -1416,35 +1444,23 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       try {
-        const preferBackendExport = neutralProcessing;
+        const outputExt = exportSettings.outputFormat || "mp3";
 
         if (audioFiles.size === 1) {
           // single file: process and download directly (keep original base name, change extension to .mp3)
           const [[name, file]] = Array.from(audioFiles.entries());
 
-          let mp3Blob;
-          if (preferBackendExport) {
-            try {
-              mp3Blob = await processFileOnBackend(file, name, exportSettings);
-            } catch (backendErr) {
-              console.warn("Backend conversion unavailable, fallback local:", backendErr);
-              if (neutralProcessing && /\.mp3$/i.test(name)) {
-                mp3Blob = file;
-              } else {
-                mp3Blob = await processFileToMp3(file, exportSettings);
-              }
-            }
-          } else if (neutralProcessing && /\.mp3$/i.test(name)) {
-            mp3Blob = file;
-          } else {
-            mp3Blob = await processFileToMp3(file, exportSettings);
-          }
+          const processedBlob = await processFileOnBackend(
+            file,
+            name,
+            exportSettings,
+          );
 
-          const url = URL.createObjectURL(mp3Blob);
+          const url = URL.createObjectURL(processedBlob);
           const a = document.createElement("a");
           a.href = url;
           const baseName = name.replace(/\.[^/.]+$/, "");
-          const finalName = baseName + ".mp3";
+          const finalName = baseName + `.${outputExt}`;
           a.download = finalName;
           document.body.appendChild(a);
           a.click();
@@ -1474,28 +1490,15 @@ document.addEventListener("DOMContentLoaded", function () {
               if (currentIndex >= entries.length) return;
 
               const [name, file] = entries[currentIndex];
-              let mp3Blob;
-
-              if (preferBackendExport) {
-                try {
-                  mp3Blob = await processFileOnBackend(file, name, exportSettings);
-                } catch (backendErr) {
-                  console.warn("Backend conversion unavailable, fallback local:", backendErr);
-                  if (neutralProcessing && /\.mp3$/i.test(name)) {
-                    mp3Blob = file;
-                  } else {
-                    mp3Blob = await processFileToMp3(file, exportSettings);
-                  }
-                }
-              } else if (neutralProcessing && /\.mp3$/i.test(name)) {
-                mp3Blob = file;
-              } else {
-                mp3Blob = await processFileToMp3(file, exportSettings);
-              }
+              const processedBlob = await processFileOnBackend(
+                file,
+                name,
+                exportSettings,
+              );
 
               const baseName = name.replace(/\.[^/.]+$/, "");
-              const finalName = baseName + ".mp3";
-              results[currentIndex] = { finalName, mp3Blob };
+              const finalName = baseName + `.${outputExt}`;
+              results[currentIndex] = { finalName, processedBlob };
 
               completed += 1;
               btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Export ${completed}/${entries.length}...`;
@@ -1512,7 +1515,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
           for (const item of results) {
             if (!item) continue;
-            zip.file(item.finalName, item.mp3Blob);
+            zip.file(item.finalName, item.processedBlob);
           }
 
           btn.innerHTML =
@@ -1534,9 +1537,13 @@ document.addEventListener("DOMContentLoaded", function () {
             (err && err.message ? err.message : err),
         );
       } finally {
+        for (const controller of backendAbortControllers) {
+          try {
+            controller.abort();
+          } catch (e) {}
+        }
         btn.disabled = false;
-        btn.innerHTML =
-          '<i class="fas fa-download"></i> Exporter en MP3 (192kbps)';
+        btn.innerHTML = '<i class="fas fa-download"></i> Exporter';
         // hide and cleanup cancel button
         try {
           if (cancelBtn) {

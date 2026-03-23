@@ -29,16 +29,116 @@ function parseFormat(value) {
   return "mp3";
 }
 
-function ffmpegArgs(inputPath, outputPath, format, bitrate) {
+function parseNumber(value, fallback) {
+  const parsed = Number.parseFloat(String(value ?? ""));
+  if (!Number.isFinite(parsed)) return fallback;
+  return parsed;
+}
+
+function parseArray(value) {
+  try {
+    const parsed = JSON.parse(String(value ?? "[]"));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function sanitizeAudioSettings(body) {
+  const playbackRate = clamp(parseNumber(body?.playbackRate, 1), 0.25, 3);
+  const preRollSeconds = clamp(parseNumber(body?.preRollSeconds, 0), 0, 300);
+  const reverbMix = clamp(parseNumber(body?.reverbMix, 0), 0, 1);
+  const reverbSize = clamp(parseNumber(body?.reverbSize, 0.5), 0.1, 0.9);
+
+  const eqFreqsRaw = parseArray(body?.eqFreqs)
+    .map((item) => Number.parseFloat(item))
+    .filter((num) => Number.isFinite(num));
+  const eqGainsRaw = parseArray(body?.eqGains)
+    .map((item) => Number.parseFloat(item))
+    .filter((num) => Number.isFinite(num));
+
+  const bandCount = Math.min(eqFreqsRaw.length, eqGainsRaw.length);
+  const eqBands = [];
+  for (let i = 0; i < bandCount; i++) {
+    const freq = clamp(eqFreqsRaw[i], 20, 20000);
+    const gain = clamp(eqGainsRaw[i], -24, 24);
+    eqBands.push({ freq, gain });
+  }
+
+  return {
+    playbackRate,
+    preRollSeconds,
+    reverbMix,
+    reverbSize,
+    eqBands,
+  };
+}
+
+function buildFilterChain(settings) {
+  const filters = [];
+
+  if (settings.preRollSeconds > 0.001) {
+    const delayMs = Math.round(settings.preRollSeconds * 1000);
+    filters.push(`adelay=${delayMs}:all=1`);
+  }
+
+  if (Math.abs(settings.playbackRate - 1) > 0.0001) {
+    filters.push(`asetrate=sample_rate*${settings.playbackRate.toFixed(6)}`);
+    filters.push("aresample=sample_rate");
+  }
+
+  for (const band of settings.eqBands) {
+    if (Math.abs(band.gain) <= 0.01) continue;
+    filters.push(
+      `equalizer=f=${band.freq.toFixed(3)}:t=q:w=4.31:g=${band.gain.toFixed(3)}`,
+    );
+  }
+
+  if (settings.reverbMix > 0.001) {
+    const d1 = Math.round(45 + settings.reverbSize * 140);
+    const d2 = Math.round(d1 * 1.7);
+    const decay1 = clamp(0.2 + settings.reverbSize * 0.5, 0.2, 0.85);
+    const decay2 = clamp(decay1 * 0.6, 0.1, 0.8);
+    const inGain = clamp(1 - settings.reverbMix * 0.7, 0.15, 1);
+    const outGain = clamp(settings.reverbMix * 0.9, 0.05, 0.95);
+    filters.push(
+      `aecho=${inGain.toFixed(3)}:${outGain.toFixed(3)}:${d1}|${d2}:${decay1.toFixed(3)}|${decay2.toFixed(3)}`,
+    );
+  }
+
+  return filters.join(",");
+}
+
+function ffmpegArgs(inputPath, outputPath, format, bitrate, audioFilter) {
+  const filterArgs = audioFilter ? ["-af", audioFilter] : [];
+
   if (format === "wav") {
-    return ["-y", "-i", inputPath, "-vn", "-acodec", "pcm_s16le", outputPath];
+    return [
+      "-y",
+      "-threads",
+      "0",
+      "-i",
+      inputPath,
+      "-vn",
+      ...filterArgs,
+      "-acodec",
+      "pcm_s16le",
+      outputPath,
+    ];
   }
   if (format === "ogg") {
     return [
       "-y",
+      "-threads",
+      "0",
       "-i",
       inputPath,
       "-vn",
+      ...filterArgs,
       "-c:a",
       "libvorbis",
       "-b:a",
@@ -49,9 +149,12 @@ function ffmpegArgs(inputPath, outputPath, format, bitrate) {
   if (format === "aac") {
     return [
       "-y",
+      "-threads",
+      "0",
       "-i",
       inputPath,
       "-vn",
+      ...filterArgs,
       "-c:a",
       "aac",
       "-b:a",
@@ -62,9 +165,12 @@ function ffmpegArgs(inputPath, outputPath, format, bitrate) {
   if (format === "webm") {
     return [
       "-y",
+      "-threads",
+      "0",
       "-i",
       inputPath,
       "-vn",
+      ...filterArgs,
       "-c:a",
       "libopus",
       "-b:a",
@@ -73,13 +179,27 @@ function ffmpegArgs(inputPath, outputPath, format, bitrate) {
     ];
   }
   if (format === "flac") {
-    return ["-y", "-i", inputPath, "-vn", "-c:a", "flac", outputPath];
+    return [
+      "-y",
+      "-threads",
+      "0",
+      "-i",
+      inputPath,
+      "-vn",
+      ...filterArgs,
+      "-c:a",
+      "flac",
+      outputPath,
+    ];
   }
   return [
     "-y",
+    "-threads",
+    "0",
     "-i",
     inputPath,
     "-vn",
+    ...filterArgs,
     "-acodec",
     "libmp3lame",
     "-b:a",
@@ -106,6 +226,8 @@ app.post("/convert", upload.single("file"), async (req, res) => {
 
   const format = parseFormat(req.body?.format);
   const bitrate = parseBitrate(req.body?.kbps);
+  const audioSettings = sanitizeAudioSettings(req.body);
+  const audioFilter = buildFilterChain(audioSettings);
 
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pitcher-"));
   const inputPath = path.join(tempDir, "input");
@@ -115,7 +237,13 @@ app.post("/convert", upload.single("file"), async (req, res) => {
     await fs.writeFile(inputPath, file.buffer);
 
     await new Promise((resolve, reject) => {
-      const args = ffmpegArgs(inputPath, outputPath, format, bitrate);
+      const args = ffmpegArgs(
+        inputPath,
+        outputPath,
+        format,
+        bitrate,
+        audioFilter,
+      );
       const child = spawn("ffmpeg", args);
 
       let stderr = "";
