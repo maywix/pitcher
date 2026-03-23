@@ -90,8 +90,24 @@ function buildFilterChain(settings) {
   }
 
   if (Math.abs(settings.playbackRate - 1) > 0.0001) {
-    filters.push(`asetrate=sample_rate*${settings.playbackRate.toFixed(6)}`);
-    filters.push("aresample=sample_rate");
+    let remainingRate = settings.playbackRate;
+    const tempoParts = [];
+
+    while (remainingRate > 2.0) {
+      tempoParts.push(2.0);
+      remainingRate /= 2.0;
+    }
+
+    while (remainingRate < 0.5) {
+      tempoParts.push(0.5);
+      remainingRate /= 0.5;
+    }
+
+    tempoParts.push(remainingRate);
+
+    for (const part of tempoParts) {
+      filters.push(`atempo=${part.toFixed(6)}`);
+    }
   }
 
   for (const band of settings.eqBands) {
