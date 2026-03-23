@@ -1332,6 +1332,47 @@ document.addEventListener("DOMContentLoaded", function () {
         return await response.blob();
       }
 
+      async function processBatchOnBackend(entries, settings) {
+        const formData = new FormData();
+        for (const [name, file] of entries) {
+          formData.append("files", file, name);
+        }
+
+        formData.append("format", settings.outputFormat || "mp3");
+        if ((settings.outputFormat || "mp3") !== "wav") {
+          formData.append("kbps", String(settings.targetKbps || 192));
+        }
+        formData.append("playbackRate", String(settings.playbackRate || 1));
+        formData.append("preRollSeconds", String(settings.preRollSeconds || 0));
+        formData.append("reverbMix", String(settings.reverbMix || 0));
+        formData.append("reverbSize", String(settings.reverbSize || 0.5));
+        formData.append("eqFreqs", JSON.stringify(currentEqFreqs || []));
+        formData.append("eqGains", JSON.stringify(settings.eqGains || []));
+
+        const controller = new AbortController();
+        backendAbortControllers.push(controller);
+
+        const response = await fetch("/api/convert-batch", {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          let detail = "";
+          try {
+            detail = await response.text();
+          } catch (e) {
+            detail = "";
+          }
+          throw new Error(
+            `Backend batch conversion failed (${response.status})${detail ? `: ${detail}` : ""}`,
+          );
+        }
+
+        return await response.blob();
+      }
+
       // helper: process a single File -> MP3 Blob (applies current EQ/reverb/pitch)
       async function processFileToMp3(file, settings) {
         // decode file
@@ -1467,60 +1508,10 @@ document.addEventListener("DOMContentLoaded", function () {
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
         } else {
-          // multiple files: process all and zip
-          if (typeof JSZip === "undefined") throw new Error("JSZip non chargé");
-          const zip = new JSZip();
+          // multiple files: process all and zip on backend
           const entries = Array.from(audioFiles.entries());
-          const results = new Array(entries.length);
-          let completed = 0;
-          let nextIndex = 0;
-
-          const maxWorkers = Math.max(
-            1,
-            Math.min(4, (navigator.hardwareConcurrency || 2) - 1),
-          );
-          const workerCount = Math.min(maxWorkers, entries.length);
-
-          async function worker() {
-            while (true) {
-              if (exportAbort.canceled) return;
-
-              const currentIndex = nextIndex;
-              nextIndex += 1;
-              if (currentIndex >= entries.length) return;
-
-              const [name, file] = entries[currentIndex];
-              const processedBlob = await processFileOnBackend(
-                file,
-                name,
-                exportSettings,
-              );
-
-              const baseName = name.replace(/\.[^/.]+$/, "");
-              const finalName = baseName + `.${outputExt}`;
-              results[currentIndex] = { finalName, processedBlob };
-
-              completed += 1;
-              btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Export ${completed}/${entries.length}...`;
-            }
-          }
-
-          await Promise.all(
-            Array.from({ length: workerCount }, () => worker()),
-          );
-
-          if (exportAbort.canceled) {
-            throw new Error("Export cancelled");
-          }
-
-          for (const item of results) {
-            if (!item) continue;
-            zip.file(item.finalName, item.processedBlob);
-          }
-
-          btn.innerHTML =
-            '<i class="fas fa-spinner fa-spin"></i> Création du ZIP...';
-          const zipBlob = await zip.generateAsync({ type: "blob" });
+          btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Export ${entries.length} fichier(s)...`;
+          const zipBlob = await processBatchOnBackend(entries, exportSettings);
           const url = URL.createObjectURL(zipBlob);
           const a = document.createElement("a");
           a.href = url;

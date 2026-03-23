@@ -1,4 +1,5 @@
 import express from "express";
+import JSZip from "jszip";
 import multer from "multer";
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
@@ -217,18 +218,7 @@ function mimeByFormat(format) {
   return "audio/mpeg";
 }
 
-app.post("/convert", upload.single("file"), async (req, res) => {
-  const file = req.file;
-  if (!file) {
-    res.status(400).json({ error: "file is required" });
-    return;
-  }
-
-  const format = parseFormat(req.body?.format);
-  const bitrate = parseBitrate(req.body?.kbps);
-  const audioSettings = sanitizeAudioSettings(req.body);
-  const audioFilter = buildFilterChain(audioSettings);
-
+async function convertUploadedFile(file, format, bitrate, audioFilter) {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pitcher-"));
   const inputPath = path.join(tempDir, "input");
   const outputPath = path.join(tempDir, `output.${format}`);
@@ -265,6 +255,32 @@ app.post("/convert", upload.single("file"), async (req, res) => {
     const baseName = (file.originalname || "output").replace(/\.[^/.]+$/, "");
     const downloadName = `${baseName}.${format}`;
 
+    return { outputBuffer, downloadName };
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+app.post("/convert", upload.single("file"), async (req, res) => {
+  const file = req.file;
+  if (!file) {
+    res.status(400).json({ error: "file is required" });
+    return;
+  }
+
+  const format = parseFormat(req.body?.format);
+  const bitrate = parseBitrate(req.body?.kbps);
+  const audioSettings = sanitizeAudioSettings(req.body);
+  const audioFilter = buildFilterChain(audioSettings);
+
+  try {
+    const { outputBuffer, downloadName } = await convertUploadedFile(
+      file,
+      format,
+      bitrate,
+      audioFilter,
+    );
+
     res.setHeader("Content-Type", mimeByFormat(format));
     res.setHeader(
       "Content-Disposition",
@@ -273,8 +289,64 @@ app.post("/convert", upload.single("file"), async (req, res) => {
     res.send(outputBuffer);
   } catch (error) {
     res.status(500).json({ error: "conversion failed", detail: error.message });
-  } finally {
-    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+app.post("/convert-batch", upload.array("files", 100), async (req, res) => {
+  const files = req.files;
+  if (!Array.isArray(files) || files.length === 0) {
+    res.status(400).json({ error: "files are required" });
+    return;
+  }
+
+  const format = parseFormat(req.body?.format);
+  const bitrate = parseBitrate(req.body?.kbps);
+  const audioSettings = sanitizeAudioSettings(req.body);
+  const audioFilter = buildFilterChain(audioSettings);
+
+  try {
+    const zip = new JSZip();
+    const cpuCount = os.cpus()?.length || 2;
+    const workerCount = Math.min(
+      files.length,
+      Math.max(1, Math.min(cpuCount - 1, 4)),
+    );
+    let nextIndex = 0;
+
+    async function worker() {
+      while (true) {
+        const index = nextIndex;
+        nextIndex += 1;
+        if (index >= files.length) return;
+
+        const converted = await convertUploadedFile(
+          files[index],
+          format,
+          bitrate,
+          audioFilter,
+        );
+        zip.file(converted.downloadName, converted.outputBuffer);
+      }
+    }
+
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+    const zipBuffer = await zip.generateAsync({
+      type: "nodebuffer",
+      compression: "DEFLATE",
+      compressionOptions: { level: 1 },
+    });
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="processed_all.zip"',
+    );
+    res.send(zipBuffer);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "batch conversion failed", detail: error.message });
   }
 });
 
