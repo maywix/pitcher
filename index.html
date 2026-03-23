@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pitcher Pro</title>
+    <link rel="stylesheet" href="css/style.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+    />
+  </head>
+  <body>
+    <div class="app-container" data-mode="simple">
+      <header class="app-header">
+        <div class="header-content">
+          <div class="logo">
+            <div class="logo-icon"><i class="fas fa-music"></i></div>
+            <div class="logo-text">
+              <h1>Pitcher Pro</h1>
+              <p class="logo-subtitle">by Maywix</p>
+            </div>
+          </div>
+
+          <div class="mode-toggle">
+            <button id="simpleModeBtn" class="mode-btn active" type="button">
+              <i class="fas fa-sliders"></i><span>Simple</span>
+            </button>
+            <button id="advancedModeBtn" class="mode-btn" type="button">
+              <i class="fas fa-gears"></i><span>Avancé</span>
+            </button>
+          </div>
+
+          <nav class="header-nav advanced-only">
+            <button id="tabImport" class="nav-btn active" type="button">
+              <i class="fas fa-upload"></i><span>Import</span>
+            </button>
+            <button id="tabRecord" class="nav-btn" type="button">
+              <i class="fas fa-microphone"></i><span>Record</span>
+            </button>
+          </nav>
+
+          <div class="header-actions">
+            <a class="social-btn" href="#" aria-label="Social"><i class="fab fa-soundcloud"></i></a>
+          </div>
+        </div>
+      </header>
+
+      <main class="app-main">
+        <section id="importTab" class="tab-content active">
+          <div id="uploadZone" class="upload-zone">
+            <div class="upload-content">
+              <div class="upload-icon"><i class="fas fa-cloud-arrow-up"></i></div>
+              <h2>Glissez vos fichiers audio ici</h2>
+              <p>ou cliquez pour parcourir</p>
+              <div class="upload-formats">MP3, WAV, FLAC, AAC, OGG</div>
+              <input id="audioFile" type="file" accept="audio/*" multiple hidden />
+            </div>
+          </div>
+
+          <div id="filesPanel" class="files-panel">
+            <div class="panel-header">
+              <h3><i class="fas fa-folder-music"></i> Fichiers</h3>
+              <button id="clearFilesBtn" class="btn-secondary" type="button">Vider</button>
+            </div>
+            <ul id="audioFilesList" class="files-list"></ul>
+          </div>
+
+          <div class="waveform-container">
+            <div id="waveform" class="waveform"></div>
+            <div id="waveformOverlay" class="waveform-overlay">
+              <i class="fas fa-wave-square"></i>
+              <span>Importe un fichier pour afficher la forme d’onde</span>
+            </div>
+          </div>
+
+          <div class="visualizer-container">
+            <canvas id="audioVisualizer"></canvas>
+          </div>
+
+          <div class="player-controls">
+            <div class="transport-controls">
+              <button id="playBtn" class="btn-primary" type="button"><i class="fas fa-play"></i></button>
+              <button id="stopBtn" class="btn-secondary" type="button"><i class="fas fa-stop"></i></button>
+            </div>
+            <div class="time-display">
+              <span id="currentTime">00:00</span>
+              <span>/</span>
+              <span id="totalTime">00:00</span>
+            </div>
+          </div>
+
+          <section class="panel advanced-only">
+            <div class="panel-header collapsible">
+              <h3>Presets</h3>
+              <i class="fas fa-chevron-down toggle-icon"></i>
+            </div>
+            <div class="panel-content expanded">
+              <div class="preset-grid">
+                <button type="button" class="preset-btn" data-preset="radio">Radio</button>
+                <button type="button" class="preset-btn" data-preset="vinyl">Vinyl</button>
+                <button type="button" class="preset-btn" data-preset="chipmunk">Chipmunk</button>
+                <button type="button" class="preset-btn" data-preset="deep-voice">Deep Voice</button>
+                <button type="button" class="preset-btn" data-preset="reset">Reset</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel advanced-only">
+            <div class="panel-header collapsible">
+              <h3>
+                Égaliseur
+                (<span id="eqBandCountLabel">31</span> bandes)
+              </h3>
+              <i class="fas fa-chevron-down toggle-icon"></i>
+            </div>
+            <div class="panel-content expanded">
+              <div class="eq-band-selector">
+                <span class="eq-band-label">Bandes:</span>
+                <div class="eq-band-options">
+                  <button type="button" class="eq-band-btn" data-bands="8">8</button>
+                  <button type="button" class="eq-band-btn" data-bands="15">15</button>
+                  <button type="button" class="eq-band-btn active" data-bands="31">31</button>
+                </div>
+              </div>
+              <div class="eq-controls">
+                <button type="button" class="eq-preset-btn" data-eq="flat">Flat</button>
+                <button type="button" class="eq-preset-btn" data-eq="bass">Bass+</button>
+                <button type="button" class="eq-preset-btn" data-eq="treble">Treble+</button>
+                <button type="button" class="eq-preset-btn" data-eq="vocal">Vocal</button>
+                <button type="button" class="eq-preset-btn" data-eq="rock">Rock</button>
+              </div>
+              <div id="eqContainer" class="eq-container"></div>
+            </div>
+          </section>
+
+          <section class="panel advanced-only">
+            <div class="panel-header">
+              <h3>FX</h3>
+            </div>
+            <div class="panel-content expanded">
+              <div class="control-row">
+                <label for="reverbMix">Reverb Mix</label>
+                <input id="reverbMix" type="range" min="0" max="1" step="0.01" value="0" />
+                <span id="reverbMixValue">0%</span>
+              </div>
+              <div class="control-row">
+                <label for="reverbSize">Reverb Size</label>
+                <input id="reverbSize" type="range" min="0" max="1" step="0.01" value="0.5" />
+                <span id="reverbSizeValue">50%</span>
+              </div>
+              <div class="control-row">
+                <label for="pitchSpeed">Pitch / Speed</label>
+                <input id="pitchSpeed" type="range" min="0.5" max="2" step="0.01" value="1" />
+                <span id="pitchSpeedValue">1.00x</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="dj-deck advanced-only disabled" id="djDeck">
+            <div class="dj-deck__header">
+              <h4>DJ Deck</h4>
+            </div>
+            <div class="dj-deck__body">
+              <div id="djDisc" class="dj-disc">
+                <div class="dj-disc__label">Pitcher</div>
+                <div class="dj-disc__spindle"></div>
+                <div class="dj-disc__marker"></div>
+              </div>
+              <div class="dj-deck__side">
+                <div class="dj-controls">
+                  <button id="djPowerBtn" class="dj-btn" type="button"><i class="fas fa-power-off"></i></button>
+                  <button id="djBackBtn" class="dj-btn" type="button"><i class="fas fa-backward"></i></button>
+                  <button id="djForwardBtn" class="dj-btn" type="button"><i class="fas fa-forward"></i></button>
+                  <button id="djCueBtn" class="dj-btn" type="button">CUE</button>
+                </div>
+                <div class="dj-readouts">
+                  <div><span class="label">Position</span><span id="djPosition" class="value">00:00</span></div>
+                  <div><span class="label">Speed</span><span id="djSpeed" class="value">1.00x</span></div>
+                  <div><span class="label">Status</span><span id="djStatus" class="value">Éteint</span></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="export-section">
+            <div class="control-row">
+              <label for="preRoll">Pre-roll</label>
+              <input id="preRoll" type="range" min="0" max="10" step="1" value="0" />
+              <span id="preRollValue">0s</span>
+            </div>
+            <div class="export-controls">
+              <select id="exportFormat" class="export-select">
+                <option value="mp3-320">MP3 320kbps</option>
+                <option value="mp3-192" selected>MP3 192kbps</option>
+                <option value="wav-16">WAV 16-bit</option>
+                <option value="wav-24">WAV 24-bit</option>
+                <option value="ogg-192">OGG 192kbps</option>
+                <option value="webm-192">WEBM 192kbps</option>
+              </select>
+              <button id="exportBtn" class="export-btn" type="button">
+                <i class="fas fa-download"></i> <span>Exporter</span>
+              </button>
+              <button id="cancelExportBtn" class="export-btn cancel" type="button" style="display: none;">
+                <i class="fas fa-ban"></i> <span>Annuler</span>
+              </button>
+            </div>
+          </section>
+        </section>
+
+        <section id="recordTab" class="tab-content">
+          <div class="record-zone">
+            <div class="record-visualizer"><canvas id="recordVisualizer"></canvas></div>
+            <div class="record-controls">
+              <button id="recordBtn" class="record-btn" type="button">
+                <i class="fas fa-microphone"></i> <span>Démarrer l'enregistrement</span>
+              </button>
+              <button id="stopRecordBtn" class="record-btn stop" type="button" disabled>
+                <i class="fas fa-stop"></i> <span>Stop</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="recordedFilesPanel" class="recorded-files" style="display: none;">
+            <h3><i class="fas fa-microphone"></i> Enregistrements</h3>
+            <ul id="recordedFilesList"></ul>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://unpkg.com/wavesurfer.js@6/dist/wavesurfer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+    <script src="js/app.min.js"></script>
+  </body>
+</html>
