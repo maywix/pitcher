@@ -16,245 +16,248 @@ document.addEventListener("DOMContentLoaded", function () {
   let currentReverbImpulse = null;
   let currentReverbMix = 0;
   let currentReverbSize = 0.5;
-  
+
   // ==========================================
   // TAB NAVIGATION
   // ==========================================
-  const tabImport = document.getElementById('tabImport');
-  const tabRecord = document.getElementById('tabRecord');
-  const importTab = document.getElementById('importTab');
-  const recordTab = document.getElementById('recordTab');
-  
+  const tabImport = document.getElementById("tabImport");
+  const tabRecord = document.getElementById("tabRecord");
+  const importTab = document.getElementById("importTab");
+  const recordTab = document.getElementById("recordTab");
+
   function switchTab(tabName) {
     // Update button states
-    tabImport.classList.toggle('active', tabName === 'import');
-    tabRecord.classList.toggle('active', tabName === 'record');
-    
+    tabImport.classList.toggle("active", tabName === "import");
+    tabRecord.classList.toggle("active", tabName === "record");
+
     // Update tab content visibility
-    importTab.classList.toggle('active', tabName === 'import');
-    recordTab.classList.toggle('active', tabName === 'record');
+    importTab.classList.toggle("active", tabName === "import");
+    recordTab.classList.toggle("active", tabName === "record");
   }
-  
-  tabImport.addEventListener('click', () => switchTab('import'));
-  tabRecord.addEventListener('click', () => switchTab('record'));
-  
+
+  tabImport.addEventListener("click", () => switchTab("import"));
+  tabRecord.addEventListener("click", () => switchTab("record"));
+
   // ==========================================
   // MODE TOGGLE (Simple / Advanced)
   // ==========================================
-  const appContainer = document.querySelector('.app-container');
-  const simpleModeBtn = document.getElementById('simpleModeBtn');
-  const advancedModeBtn = document.getElementById('advancedModeBtn');
-  
-  // Check for saved mode preference
-  const savedMode = localStorage.getItem('pitcherMode') || 'simple';
-  setMode(savedMode);
-  
+  const appContainer = document.querySelector(".app-container");
+  const simpleModeBtn = document.getElementById("simpleModeBtn");
+  const advancedModeBtn = document.getElementById("advancedModeBtn");
+
+  // Force full UI by default on load
+  const initialMode = "advanced";
+  setMode(initialMode);
+
   function setMode(mode) {
-    appContainer.setAttribute('data-mode', mode);
-    
+    appContainer.setAttribute("data-mode", mode);
+
     // Update button states
-    simpleModeBtn.classList.toggle('active', mode === 'simple');
-    advancedModeBtn.classList.toggle('active', mode === 'advanced');
-    
+    simpleModeBtn.classList.toggle("active", mode === "simple");
+    advancedModeBtn.classList.toggle("active", mode === "advanced");
+
     // Save preference
-    localStorage.setItem('pitcherMode', mode);
-    
+    localStorage.setItem("pitcherMode", mode);
+
     // If switching to simple mode and on record tab, switch to import
-    if (mode === 'simple' && recordTab.classList.contains('active')) {
-      switchTab('import');
+    if (mode === "simple" && recordTab.classList.contains("active")) {
+      switchTab("import");
     }
-    
+
     // Log mode change
-    console.log('Pitcher Mode:', mode);
+    console.log("Pitcher Mode:", mode);
   }
-  
-  simpleModeBtn.addEventListener('click', () => setMode('simple'));
-  advancedModeBtn.addEventListener('click', () => setMode('advanced'));
-  
+
+  simpleModeBtn.addEventListener("click", () => setMode("simple"));
+  advancedModeBtn.addEventListener("click", () => setMode("advanced"));
+
   // ==========================================
   // UPLOAD ZONE - CLICK & DRAG AND DROP
   // ==========================================
-  const uploadZone = document.getElementById('uploadZone');
-  const audioFileInput = document.getElementById('audioFile');
-  
+  const uploadZone = document.getElementById("uploadZone");
+  const audioFileInput = document.getElementById("audioFile");
+
   // Click on upload zone opens file dialog
-  uploadZone.addEventListener('click', function(e) {
+  uploadZone.addEventListener("click", function (e) {
     // Prevent triggering if clicking on input itself
     if (e.target !== audioFileInput) {
       audioFileInput.click();
     }
   });
-  
+
   // Drag and drop handlers
-  uploadZone.addEventListener('dragenter', function(e) {
+  uploadZone.addEventListener("dragenter", function (e) {
     e.preventDefault();
     e.stopPropagation();
-    this.classList.add('drag-over');
+    this.classList.add("drag-over");
   });
-  
-  uploadZone.addEventListener('dragover', function(e) {
+
+  uploadZone.addEventListener("dragover", function (e) {
     e.preventDefault();
     e.stopPropagation();
-    this.classList.add('drag-over');
+    this.classList.add("drag-over");
   });
-  
-  uploadZone.addEventListener('dragleave', function(e) {
+
+  uploadZone.addEventListener("dragleave", function (e) {
     e.preventDefault();
     e.stopPropagation();
     // Only remove class if leaving the upload zone itself
     if (e.relatedTarget && !this.contains(e.relatedTarget)) {
-      this.classList.remove('drag-over');
+      this.classList.remove("drag-over");
     } else if (!e.relatedTarget) {
-      this.classList.remove('drag-over');
+      this.classList.remove("drag-over");
     }
   });
-  
-  uploadZone.addEventListener('drop', async function(e) {
+
+  uploadZone.addEventListener("drop", async function (e) {
     e.preventDefault();
     e.stopPropagation();
-    this.classList.remove('drag-over');
-    
+    this.classList.remove("drag-over");
+
     const files = e.dataTransfer.files;
     if (files.length > 0) {
       await handleFiles(files);
     }
   });
-  
+
   // Prevent default drag behavior on the document
-  document.addEventListener('dragover', function(e) {
+  document.addEventListener("dragover", function (e) {
     e.preventDefault();
   });
-  
-  document.addEventListener('drop', function(e) {
+
+  document.addEventListener("drop", function (e) {
     e.preventDefault();
   });
-  
+
   // Handle files from both input and drag & drop
   async function handleFiles(files) {
-    const validExtensions = ['.mp3', '.flac', '.wav', '.aac', '.ogg', '.webm'];
+    const validExtensions = [".mp3", ".flac", ".wav", ".aac", ".ogg", ".webm"];
     let firstFile = null;
-    
+
     for (let file of files) {
-      const ext = '.' + file.name.split('.').pop().toLowerCase();
-      if (validExtensions.includes(ext) || file.type.startsWith('audio/')) {
+      const ext = "." + file.name.split(".").pop().toLowerCase();
+      if (validExtensions.includes(ext) || file.type.startsWith("audio/")) {
         audioFiles.set(file.name, file);
         if (!firstFile) firstFile = file;
       }
     }
-    
+
     updateFilesList();
-    
+
     // Show files panel when files are added
-    const filesPanel = document.getElementById('filesPanel');
+    const filesPanel = document.getElementById("filesPanel");
     if (filesPanel && audioFiles.size > 0) {
-      filesPanel.classList.add('has-files');
+      filesPanel.classList.add("has-files");
     }
-    
+
     // Load first file if none is currently loaded
     if (!currentFileName && firstFile) {
       currentFileName = firstFile.name;
       await playFile(currentFileName);
     }
-    
+
     // Hide the overlay if audio is loaded
-    const overlay = document.getElementById('waveformOverlay');
+    const overlay = document.getElementById("waveformOverlay");
     if (overlay && audioFiles.size > 0) {
-      overlay.style.display = 'none';
+      overlay.style.display = "none";
     }
   }
-  
+
   // Clear files button
-  const clearFilesBtn = document.getElementById('clearFilesBtn');
+  const clearFilesBtn = document.getElementById("clearFilesBtn");
   if (clearFilesBtn) {
-    clearFilesBtn.addEventListener('click', function() {
+    clearFilesBtn.addEventListener("click", function () {
       audioFiles.clear();
       currentFileName = null;
       updateFilesList();
       wavesurfer.empty();
-      
-      const overlay = document.getElementById('waveformOverlay');
-      if (overlay) overlay.style.display = 'flex';
-      
-      const filesPanel = document.getElementById('filesPanel');
-      if (filesPanel) filesPanel.classList.remove('has-files');
+
+      const overlay = document.getElementById("waveformOverlay");
+      if (overlay) overlay.style.display = "flex";
+
+      const filesPanel = document.getElementById("filesPanel");
+      if (filesPanel) filesPanel.classList.remove("has-files");
     });
   }
-  
+
   // ==========================================
   // AUDIO RECORDER SETUP
   // ==========================================
-  const recordBtn = document.getElementById('recordBtn');
-  const stopRecordBtn = document.getElementById('stopRecordBtn');
-  
-  recordBtn.addEventListener('click', async function() {
+  const recordBtn = document.getElementById("recordBtn");
+  const stopRecordBtn = document.getElementById("stopRecordBtn");
+
+  recordBtn.addEventListener("click", async function () {
     try {
       // Initialize recorder if not already
       if (!audioRecorder) {
         audioRecorder = new AudioRecorder();
         await audioRecorder.init();
       }
-      
+
       // Start recording
       const recordingName = audioRecorder.start();
-      
+
       // Update UI
-      this.classList.add('recording');
-      this.innerHTML = '<i class="fas fa-circle blink"></i> <span>Enregistrement...</span>';
+      this.classList.add("recording");
+      this.innerHTML =
+        '<i class="fas fa-circle blink"></i> <span>Enregistrement...</span>';
       this.disabled = true;
       stopRecordBtn.disabled = false;
-      
+
       // Update status
-      const djStatus = document.getElementById('djStatus');
-      if (djStatus) djStatus.textContent = 'Enregistrement';
-      
+      const djStatus = document.getElementById("djStatus");
+      if (djStatus) djStatus.textContent = "Enregistrement";
     } catch (error) {
-      console.error('Erreur démarrage enregistrement:', error);
-      alert('Erreur: ' + error.message);
+      console.error("Erreur démarrage enregistrement:", error);
+      alert("Erreur: " + error.message);
     }
   });
-  
-  stopRecordBtn.addEventListener('click', function() {
+
+  stopRecordBtn.addEventListener("click", function () {
     if (audioRecorder && audioRecorder.isRecording) {
       audioRecorder.stop();
-      
+
       // Update UI
-      recordBtn.classList.remove('recording');
-      recordBtn.innerHTML = '<i class="fas fa-microphone"></i> <span>Démarrer l\'enregistrement</span>';
+      recordBtn.classList.remove("recording");
+      recordBtn.innerHTML =
+        '<i class="fas fa-microphone"></i> <span>Démarrer l\'enregistrement</span>';
       recordBtn.disabled = false;
       this.disabled = true;
-      
+
       // Update status
-      const djStatus = document.getElementById('djStatus');
-      if (djStatus) djStatus.textContent = 'En attente';
+      const djStatus = document.getElementById("djStatus");
+      if (djStatus) djStatus.textContent = "En attente";
     }
   });
-  
+
   // Handle recording complete event
-  window.addEventListener('recordingComplete', function(e) {
+  window.addEventListener("recordingComplete", function (e) {
     const { file, name, duration } = e.detail;
-    
+
     // Add to recorded files
     recordedFiles.set(name, file);
-    
+
     // Update recorded files list
     updateRecordedFilesList();
-    
+
     // Also add to main audio files for processing
     audioFiles.set(file.name, file);
     updateFilesList();
-    
+
     // Show success notification
-    showNotification(`Enregistrement "${name}" sauvegardé (${formatDuration(duration)})`);
+    showNotification(
+      `Enregistrement "${name}" sauvegardé (${formatDuration(duration)})`,
+    );
   });
-  
+
   function updateRecordedFilesList() {
-    const recordedFilesList = document.getElementById('recordedFilesList');
+    const recordedFilesList = document.getElementById("recordedFilesList");
     if (!recordedFilesList) return;
-    
-    recordedFilesList.innerHTML = '';
-    
+
+    recordedFilesList.innerHTML = "";
+
     recordedFiles.forEach((file, name) => {
-      const li = document.createElement('li');
+      const li = document.createElement("li");
       li.innerHTML = `
         <span class="file-name"><i class="fas fa-microphone"></i> ${file.name}</span>
         <div class="file-actions">
@@ -262,71 +265,74 @@ document.addEventListener("DOMContentLoaded", function () {
           <button class="btn-icon delete-btn" title="Supprimer"><i class="fas fa-trash"></i></button>
         </div>
       `;
-      
+
       // Load button
-      li.querySelector('.load-btn').addEventListener('click', async (e) => {
+      li.querySelector(".load-btn").addEventListener("click", async (e) => {
         e.stopPropagation();
         currentFileName = file.name;
         await playFile(file.name);
-        switchTab('import');
+        switchTab("import");
       });
-      
+
       // Delete button
-      li.querySelector('.delete-btn').addEventListener('click', (e) => {
+      li.querySelector(".delete-btn").addEventListener("click", (e) => {
         e.stopPropagation();
         recordedFiles.delete(name);
         audioFiles.delete(file.name);
         updateRecordedFilesList();
         updateFilesList();
       });
-      
+
       recordedFilesList.appendChild(li);
     });
-    
+
     // Show panel if has recordings
-    const recordedFilesPanel = document.getElementById('recordedFilesPanel');
+    const recordedFilesPanel = document.getElementById("recordedFilesPanel");
     if (recordedFilesPanel) {
-      recordedFilesPanel.style.display = recordedFiles.size > 0 ? 'block' : 'none';
+      recordedFilesPanel.style.display =
+        recordedFiles.size > 0 ? "block" : "none";
     }
   }
-  
+
   function showNotification(message) {
-    const notification = document.createElement('div');
-    notification.className = 'notification';
+    const notification = document.createElement("div");
+    notification.className = "notification";
     notification.innerHTML = `<i class="fas fa-check-circle"></i> ${message}`;
     document.body.appendChild(notification);
-    
-    setTimeout(() => notification.classList.add('show'), 10);
+
+    setTimeout(() => notification.classList.add("show"), 10);
     setTimeout(() => {
-      notification.classList.remove('show');
+      notification.classList.remove("show");
       setTimeout(() => notification.remove(), 300);
     }, 3000);
   }
-  
+
   function formatDuration(seconds) {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   }
-  
+
   // ==========================================
   // PRESETS INTEGRATION
   // ==========================================
-  document.querySelectorAll('.preset-btn[data-preset]').forEach(btn => {
-    btn.addEventListener('click', function() {
+  document.querySelectorAll(".preset-btn[data-preset]").forEach((btn) => {
+    btn.addEventListener("click", function () {
       const presetName = this.dataset.preset;
       if (window.PRESETS && window.PRESETS[presetName]) {
         applyPreset(window.PRESETS[presetName]);
-        
+
         // Visual feedback
-        document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
-        if (presetName !== 'reset') {
-          this.classList.add('active');
+        document
+          .querySelectorAll(".preset-btn")
+          .forEach((b) => b.classList.remove("active"));
+        if (presetName !== "reset") {
+          this.classList.add("active");
         }
       }
     });
   });
-  
+
   function applyPreset(preset) {
     // Apply EQ bands
     if (preset.eq && preset.eq.bands) {
@@ -336,47 +342,52 @@ document.addEventListener("DOMContentLoaded", function () {
           eqFilters[index].gain.value = gain;
         }
         // Update slider UI
-        const slider = document.querySelector(`#eqContainer input[data-index="${index}"]`);
+        const slider = document.querySelector(
+          `#eqContainer input[data-index="${index}"]`,
+        );
         if (slider) slider.value = gain;
       });
     }
-    
+
     // Apply reverb
     if (preset.reverb) {
-      const reverbMixSlider = document.getElementById('reverbMix');
-      const reverbSizeSlider = document.getElementById('reverbSize');
-      
+      const reverbMixSlider = document.getElementById("reverbMix");
+      const reverbSizeSlider = document.getElementById("reverbSize");
+
       if (reverbMixSlider) {
         reverbMixSlider.value = preset.reverb.mix;
-        document.getElementById('reverbMixValue').textContent = Math.round(preset.reverb.mix * 100) + '%';
+        document.getElementById("reverbMixValue").textContent =
+          Math.round(preset.reverb.mix * 100) + "%";
       }
       if (reverbSizeSlider) {
         reverbSizeSlider.value = preset.reverb.size;
-        document.getElementById('reverbSizeValue').textContent = Math.round(preset.reverb.size * 100) + '%';
+        document.getElementById("reverbSizeValue").textContent =
+          Math.round(preset.reverb.size * 100) + "%";
       }
     }
-    
+
     // Apply pitch/speed
     if (preset.pitch) {
-      const pitchSlider = document.getElementById('pitchSpeed');
+      const pitchSlider = document.getElementById("pitchSpeed");
       if (pitchSlider) {
         pitchSlider.value = preset.pitch;
-        document.getElementById('pitchSpeedValue').textContent = preset.pitch.toFixed(2) + 'x';
+        document.getElementById("pitchSpeedValue").textContent =
+          preset.pitch.toFixed(2) + "x";
         if (wavesurfer && wavesurfer.backend) {
           wavesurfer.setPlaybackRate(preset.pitch);
         }
       }
     }
-    
+
     // Reload audio with new settings
     if (currentFileName) {
       playFile(currentFileName);
     }
   }
-  
+
   // EQ Presets buttons
-  document.querySelectorAll('.eq-preset-btn[data-eq]').forEach(btn => {
-    btn.addEventListener('click', function() {
+  document.querySelectorAll(".eq-preset-btn[data-eq]").forEach((btn) => {
+    btn.addEventListener("click", function () {
       const eqPresetName = this.dataset.eq;
       if (window.EQ_PRESETS && window.EQ_PRESETS[eqPresetName]) {
         const eqPreset = window.EQ_PRESETS[eqPresetName];
@@ -385,32 +396,38 @@ document.addEventListener("DOMContentLoaded", function () {
           if (eqFilters[index]) {
             eqFilters[index].gain.value = gain;
           }
-          const slider = document.querySelector(`#eqContainer input[data-index="${index}"]`);
+          const slider = document.querySelector(
+            `#eqContainer input[data-index="${index}"]`,
+          );
           if (slider) slider.value = gain;
         });
-        
+
         // Visual feedback
-        document.querySelectorAll('.eq-preset-btn').forEach(b => b.classList.remove('active'));
-        this.classList.add('active');
+        document
+          .querySelectorAll(".eq-preset-btn")
+          .forEach((b) => b.classList.remove("active"));
+        this.classList.add("active");
       }
     });
   });
-  
+
   // ==========================================
   // COLLAPSIBLE PANELS
   // ==========================================
-  document.querySelectorAll('.panel-header.collapsible').forEach(header => {
-    header.addEventListener('click', function() {
+  document.querySelectorAll(".panel-header.collapsible").forEach((header) => {
+    header.addEventListener("click", function () {
       const content = this.nextElementSibling;
-      const icon = this.querySelector('.toggle-icon');
-      
-      content.classList.toggle('expanded');
+      const icon = this.querySelector(".toggle-icon");
+
+      content.classList.toggle("expanded");
       if (icon) {
-        icon.style.transform = content.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0deg)';
+        icon.style.transform = content.classList.contains("expanded")
+          ? "rotate(180deg)"
+          : "rotate(0deg)";
       }
     });
   });
-  
+
   // ==========================================
   // WAVESURFER SETUP
   // ==========================================
@@ -427,24 +444,24 @@ document.addEventListener("DOMContentLoaded", function () {
   // Keep some basic UI hooks for time updates (more listeners are added later)
   wavesurfer.on("ready", function () {
     document.getElementById("totalTime").textContent = formatTime(
-      wavesurfer.getDuration()
+      wavesurfer.getDuration(),
     );
   });
   wavesurfer.on("audioprocess", function () {
     document.getElementById("currentTime").textContent = formatTime(
-      wavesurfer.getCurrentTime()
+      wavesurfer.getCurrentTime(),
     );
   });
 
   // ==========================================
   // AUDIO VISUALIZER
   // ==========================================
-  const visualizerCanvas = document.getElementById('audioVisualizer');
-  const visualizerCtx = visualizerCanvas.getContext('2d');
+  const visualizerCanvas = document.getElementById("audioVisualizer");
+  const visualizerCtx = visualizerCanvas.getContext("2d");
   let analyserNode = null;
   let visualizerAnimationId = null;
   let isVisualizerActive = false;
-  
+
   // Set canvas size
   function resizeVisualizer() {
     const container = visualizerCanvas.parentElement;
@@ -452,34 +469,34 @@ document.addEventListener("DOMContentLoaded", function () {
     visualizerCanvas.height = 80;
   }
   resizeVisualizer();
-  window.addEventListener('resize', resizeVisualizer);
-  
+  window.addEventListener("resize", resizeVisualizer);
+
   // Draw idle state (flat line of bars)
   function drawIdleVisualizer() {
     const width = visualizerCanvas.width;
     const height = visualizerCanvas.height;
     const barCount = 64;
-    const barWidth = (width / barCount) - 2;
+    const barWidth = width / barCount - 2;
     const barGap = 2;
-    
+
     visualizerCtx.clearRect(0, 0, width, height);
-    
+
     for (let i = 0; i < barCount; i++) {
       const x = i * (barWidth + barGap);
       const barHeight = 4;
       const y = height - barHeight;
-      
+
       // Purple gradient for idle
       const gradient = visualizerCtx.createLinearGradient(0, y, 0, height);
-      gradient.addColorStop(0, 'rgba(153, 102, 255, 0.5)');
-      gradient.addColorStop(1, 'rgba(153, 102, 255, 0.2)');
-      
+      gradient.addColorStop(0, "rgba(153, 102, 255, 0.5)");
+      gradient.addColorStop(1, "rgba(153, 102, 255, 0.2)");
+
       visualizerCtx.fillStyle = gradient;
       visualizerCtx.fillRect(x, y, barWidth, barHeight);
     }
   }
   drawIdleVisualizer();
-  
+
   // Create gradient colors for bars
   function getBarGradient(ctx, x, y, height, intensity) {
     const gradient = ctx.createLinearGradient(0, y, 0, y + height);
@@ -489,20 +506,20 @@ document.addEventListener("DOMContentLoaded", function () {
     gradient.addColorStop(1, `rgba(120, 80, 200, ${0.6 + intensity * 0.2})`);
     return gradient;
   }
-  
+
   // Draw visualizer with frequency data
   function drawVisualizer(dataArray) {
     const width = visualizerCanvas.width;
     const height = visualizerCanvas.height;
     const barCount = 64;
-    const barWidth = (width / barCount) - 2;
+    const barWidth = width / barCount - 2;
     const barGap = 2;
-    
+
     visualizerCtx.clearRect(0, 0, width, height);
-    
+
     // Sample data to match bar count
     const step = Math.floor(dataArray.length / barCount);
-    
+
     for (let i = 0; i < barCount; i++) {
       // Average of frequencies in this range
       let sum = 0;
@@ -510,50 +527,56 @@ document.addEventListener("DOMContentLoaded", function () {
         sum += dataArray[i * step + j];
       }
       const average = sum / step;
-      
+
       // Normalize to 0-1 and apply smoothing
       const normalized = average / 255;
       const barHeight = Math.max(4, normalized * height * 0.9);
-      
+
       const x = i * (barWidth + barGap);
       const y = height - barHeight;
-      
+
       // Get gradient based on intensity
-      const gradient = getBarGradient(visualizerCtx, x, y, barHeight, normalized);
-      
+      const gradient = getBarGradient(
+        visualizerCtx,
+        x,
+        y,
+        barHeight,
+        normalized,
+      );
+
       visualizerCtx.fillStyle = gradient;
-      
+
       // Draw rounded bar
       visualizerCtx.beginPath();
       visualizerCtx.roundRect(x, y, barWidth, barHeight, [3, 3, 0, 0]);
       visualizerCtx.fill();
-      
+
       // Add glow effect for high intensity bars
       if (normalized > 0.6) {
-        visualizerCtx.shadowColor = 'rgba(153, 102, 255, 0.8)';
+        visualizerCtx.shadowColor = "rgba(153, 102, 255, 0.8)";
         visualizerCtx.shadowBlur = 10;
         visualizerCtx.fill();
         visualizerCtx.shadowBlur = 0;
       }
     }
   }
-  
+
   // Animation loop
   function animateVisualizer() {
     if (!analyserNode || !isVisualizerActive) {
       drawIdleVisualizer();
       return;
     }
-    
+
     const bufferLength = analyserNode.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
     analyserNode.getByteFrequencyData(dataArray);
-    
+
     drawVisualizer(dataArray);
-    
+
     visualizerAnimationId = requestAnimationFrame(animateVisualizer);
   }
-  
+
   // Setup visualizer when audio context is available
   function setupVisualizer(audioContext, sourceNode) {
     try {
@@ -563,23 +586,23 @@ document.addEventListener("DOMContentLoaded", function () {
         analyserNode.fftSize = 256;
         analyserNode.smoothingTimeConstant = 0.8;
       }
-      
+
       // Connect source to analyser (and analyser to nothing, just for analysis)
-      if (sourceNode && typeof sourceNode.connect === 'function') {
+      if (sourceNode && typeof sourceNode.connect === "function") {
         sourceNode.connect(analyserNode);
       }
-      
+
       isVisualizerActive = true;
       if (!visualizerAnimationId) {
         animateVisualizer();
       }
-      
-      console.log('Audio visualizer setup complete');
+
+      console.log("Audio visualizer setup complete");
     } catch (err) {
-      console.warn('Visualizer setup error:', err);
+      console.warn("Visualizer setup error:", err);
     }
   }
-  
+
   // Stop visualizer
   function stopVisualizer() {
     isVisualizerActive = false;
@@ -589,21 +612,24 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     setTimeout(drawIdleVisualizer, 100);
   }
-  
+
   // Hook into wavesurfer play/pause events
-  wavesurfer.on('play', function() {
+  wavesurfer.on("play", function () {
     if (wavesurfer.backend && wavesurfer.backend.ac) {
       const audioContext = wavesurfer.backend.ac;
-      const connector = wavesurfer.backend.gainNode || wavesurfer.backend.gain || wavesurfer.backend.masterGain;
+      const connector =
+        wavesurfer.backend.gainNode ||
+        wavesurfer.backend.gain ||
+        wavesurfer.backend.masterGain;
       if (connector) {
         setupVisualizer(audioContext, connector);
       }
     }
   });
-  
-  wavesurfer.on('pause', stopVisualizer);
-  wavesurfer.on('stop', stopVisualizer);
-  wavesurfer.on('finish', stopVisualizer);
+
+  wavesurfer.on("pause", stopVisualizer);
+  wavesurfer.on("stop", stopVisualizer);
+  wavesurfer.on("finish", stopVisualizer);
 
   // Debug panel (visible on hosted site to collect runtime errors/routing info)
   (function createDebugPanel() {
@@ -662,36 +688,41 @@ document.addEventListener("DOMContentLoaded", function () {
   // ==========================================
   // EQUALIZER WITH BAND SELECTION (8, 15, 31)
   // ==========================================
-  
+
   // Frequency configurations for different band counts
   const eqBandConfigs = {
     8: [60, 170, 310, 600, 1000, 3000, 6000, 12000],
-    15: [25, 40, 63, 100, 160, 250, 400, 630, 1000, 1600, 2500, 4000, 6300, 10000, 16000],
-    31: [20, 25, 31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630,
-         800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000,
-         12500, 16000, 20000]
+    15: [
+      25, 40, 63, 100, 160, 250, 400, 630, 1000, 1600, 2500, 4000, 6300, 10000,
+      16000,
+    ],
+    31: [
+      20, 25, 31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630,
+      800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000,
+      12500, 16000, 20000,
+    ],
   };
-  
+
   let currentBandCount = 31;
   let currentEqFreqs = eqBandConfigs[31];
-  
+
   // Format frequency for display
   function formatFrequency(freq) {
     if (freq >= 1000) {
-      return (freq / 1000).toFixed(freq % 1000 === 0 ? 0 : 1) + 'k';
+      return (freq / 1000).toFixed(freq % 1000 === 0 ? 0 : 1) + "k";
     }
     return freq.toString();
   }
-  
+
   // Create EQ sliders based on band count
   function createEQSliders(bandCount = 31) {
     currentBandCount = bandCount;
     currentEqFreqs = eqBandConfigs[bandCount];
-    
+
     const eqContainer = document.getElementById("eqContainer");
     eqContainer.innerHTML = "";
     pendingEqGains = new Array(currentEqFreqs.length).fill(0);
-    
+
     // Reset eqFilters for new configuration
     eqFilters = [];
 
@@ -716,10 +747,11 @@ document.addEventListener("DOMContentLoaded", function () {
         const idx = parseInt(this.dataset.index);
         const val = parseFloat(this.value);
         pendingEqGains[idx] = val;
-        
+
         // Update value display
-        valueDisplay.textContent = (val >= 0 ? "+" : "") + val.toFixed(1) + "dB";
-        
+        valueDisplay.textContent =
+          (val >= 0 ? "+" : "") + val.toFixed(1) + "dB";
+
         if (eqFilters && eqFilters[idx]) {
           try {
             eqFilters[idx].gain.value = val;
@@ -737,7 +769,7 @@ document.addEventListener("DOMContentLoaded", function () {
       sliderContainer.appendChild(label);
       eqContainer.appendChild(sliderContainer);
     });
-    
+
     // Update label in header
     const bandLabel = document.getElementById("eqBandCountLabel");
     if (bandLabel) {
@@ -746,17 +778,19 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // Band selector buttons
-  document.querySelectorAll('.eq-band-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
+  document.querySelectorAll(".eq-band-btn").forEach((btn) => {
+    btn.addEventListener("click", function () {
       const bandCount = parseInt(this.dataset.bands);
-      
+
       // Update active state
-      document.querySelectorAll('.eq-band-btn').forEach(b => b.classList.remove('active'));
-      this.classList.add('active');
-      
+      document
+        .querySelectorAll(".eq-band-btn")
+        .forEach((b) => b.classList.remove("active"));
+      this.classList.add("active");
+
       // Recreate sliders
       createEQSliders(bandCount);
-      
+
       // Reload audio to apply new EQ if playing
       if (currentFileName && wavesurfer) {
         playFile(currentFileName);
@@ -849,18 +883,18 @@ document.addEventListener("DOMContentLoaded", function () {
 
         // Configurer les gains
         reverbGain.gain.value = parseFloat(
-          document.getElementById("reverbMix").value
+          document.getElementById("reverbMix").value,
         );
         dryGain.gain.value = 1 - reverbGain.gain.value;
 
         // Créer l'effet de réverbération (impulse)
         const duration = Math.max(
           0.1,
-          parseFloat(document.getElementById("reverbSize").value) * 5
+          parseFloat(document.getElementById("reverbSize").value) * 5,
         );
         const decay = Math.max(
           0.1,
-          parseFloat(document.getElementById("reverbSize").value) * 3
+          parseFloat(document.getElementById("reverbSize").value) * 3,
         );
         const sampleRate = audioContext.sampleRate;
         const length = Math.max(1, Math.floor(sampleRate * duration));
@@ -879,7 +913,7 @@ document.addEventListener("DOMContentLoaded", function () {
           currentReverbImpulse = impulse;
           currentReverbMix = reverbGain.gain.value;
           currentReverbSize = parseFloat(
-            document.getElementById("reverbSize").value
+            document.getElementById("reverbSize").value,
           );
         } catch (e) {
           /* ignore */
@@ -946,7 +980,7 @@ document.addEventListener("DOMContentLoaded", function () {
               window.__pitcherDebug.log("Routing via source done");
           } else {
             console.warn(
-              "No connector node or source found — audio routing may be incomplete"
+              "No connector node or source found — audio routing may be incomplete",
             );
             if (window.__pitcherDebug)
               window.__pitcherDebug.log("No connector node or source found");
@@ -954,14 +988,14 @@ document.addEventListener("DOMContentLoaded", function () {
         } catch (routeErr) {
           console.warn(
             "Error while routing audio nodes for reverb/EQ",
-            routeErr
+            routeErr,
           );
           if (window.__pitcherDebug)
             window.__pitcherDebug.log(
               "Routing error: " +
                 (routeErr && routeErr.message
                   ? routeErr.message
-                  : String(routeErr))
+                  : String(routeErr)),
             );
         }
 
@@ -973,7 +1007,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         // Appliquer le pitch/speed via wavesurfer
         const pitchSpeed = parseFloat(
-          document.getElementById("pitchSpeed").value
+          document.getElementById("pitchSpeed").value,
         );
         wavesurfer.setPlaybackRate(pitchSpeed);
       }
@@ -994,7 +1028,6 @@ document.addEventListener("DOMContentLoaded", function () {
         await handleFiles(e.target.files);
       }
     });
-
 
   document.getElementById("playBtn").addEventListener("click", function () {
     if (!currentFileName) {
@@ -1151,7 +1184,7 @@ document.addEventListener("DOMContentLoaded", function () {
               } catch (encErr) {
                 if (window.__pitcherDebug)
                   window.__pitcherDebug.log(
-                    "encodeBuffer error (padded stereo): " + encErr.message
+                    "encodeBuffer error (padded stereo): " + encErr.message,
                   );
                 throw encErr;
               }
@@ -1163,7 +1196,7 @@ document.addEventListener("DOMContentLoaded", function () {
               } catch (encErr) {
                 if (window.__pitcherDebug)
                   window.__pitcherDebug.log(
-                    "encodeBuffer error (padded mono): " + encErr.message
+                    "encodeBuffer error (padded mono): " + encErr.message,
                   );
                 throw encErr;
               }
@@ -1183,7 +1216,7 @@ document.addEventListener("DOMContentLoaded", function () {
             } catch (encErr) {
               if (window.__pitcherDebug)
                 window.__pitcherDebug.log(
-                  "encodeBuffer error: " + encErr.message
+                  "encodeBuffer error: " + encErr.message,
                 );
               throw encErr;
             }
@@ -1202,7 +1235,7 @@ document.addEventListener("DOMContentLoaded", function () {
         // decode file
         const arrayBuffer = await file.arrayBuffer();
         const decoded = await audioProcessor.audioContext.decodeAudioData(
-          arrayBuffer.slice(0)
+          arrayBuffer.slice(0),
         );
 
         if (exportAbort.canceled) throw new Error("Export cancelled");
@@ -1214,26 +1247,26 @@ document.addEventListener("DOMContentLoaded", function () {
           parseFloat(
             document.getElementById("preRoll")
               ? document.getElementById("preRoll").value
-              : 0
+              : 0,
           ) || 0;
         const sampleRate = decoded.sampleRate;
         const preRollSamples = Math.ceil(preRollSeconds * sampleRate);
         // offline length must account for pre-roll plus slowed/sped audio duration
         const offlineLength = Math.max(
           1,
-          Math.ceil(preRollSamples + decoded.length / playbackRate)
+          Math.ceil(preRollSamples + decoded.length / playbackRate),
         );
         const offlineContext = new OfflineAudioContext(
           decoded.numberOfChannels,
           offlineLength,
-          sampleRate
+          sampleRate,
         );
 
         const source = offlineContext.createBufferSource();
         const offBuffer = offlineContext.createBuffer(
           decoded.numberOfChannels,
           decoded.length,
-          decoded.sampleRate
+          decoded.sampleRate,
         );
         for (let ch = 0; ch < decoded.numberOfChannels; ch++) {
           offBuffer.copyToChannel(decoded.getChannelData(ch), ch, 0);
@@ -1255,8 +1288,8 @@ document.addEventListener("DOMContentLoaded", function () {
             typeof liveGain === "number"
               ? liveGain
               : typeof pendingEqGains[i] === "number"
-              ? pendingEqGains[i]
-              : 0;
+                ? pendingEqGains[i]
+                : 0;
           return filter;
         });
 
@@ -1265,13 +1298,13 @@ document.addEventListener("DOMContentLoaded", function () {
           const offImp = offlineContext.createBuffer(
             currentReverbImpulse.numberOfChannels,
             currentReverbImpulse.length,
-            currentReverbImpulse.sampleRate
+            currentReverbImpulse.sampleRate,
           );
           for (let ch = 0; ch < currentReverbImpulse.numberOfChannels; ch++) {
             offImp.copyToChannel(
               currentReverbImpulse.getChannelData(ch),
               ch,
-              0
+              0,
             );
           }
           offlineReverb.buffer = offImp;
@@ -1316,7 +1349,7 @@ document.addEventListener("DOMContentLoaded", function () {
               "MP3 encoding error: " +
                 (encodeErr && encodeErr.message
                   ? encodeErr.message
-                  : String(encodeErr))
+                  : String(encodeErr)),
             );
           }
           throw encodeErr;
@@ -1369,7 +1402,7 @@ document.addEventListener("DOMContentLoaded", function () {
         console.error("Erreur export batch:", err);
         alert(
           "Erreur lors de l'export : " +
-            (err && err.message ? err.message : err)
+            (err && err.message ? err.message : err),
         );
       } finally {
         btn.disabled = false;
@@ -1389,13 +1422,13 @@ document.addEventListener("DOMContentLoaded", function () {
   // Mise à jour de l'affichage du temps
   wavesurfer.on("audioprocess", function () {
     document.getElementById("currentTime").textContent = formatTime(
-      wavesurfer.getCurrentTime()
+      wavesurfer.getCurrentTime(),
     );
   });
 
   wavesurfer.on("ready", function () {
     document.getElementById("totalTime").textContent = formatTime(
-      wavesurfer.getDuration()
+      wavesurfer.getDuration(),
     );
   });
 
