@@ -86,7 +86,7 @@ function buildFilterChain(settings) {
 
   if (settings.preRollSeconds > 0.001) {
     const delayMs = Math.round(settings.preRollSeconds * 1000);
-    filters.push(`adelay=${delayMs}:all=1`);
+    filters.push(`adelay=delays=${delayMs}:all=1`);
   }
 
   if (Math.abs(settings.playbackRate - 1) > 0.0001) {
@@ -113,7 +113,7 @@ function buildFilterChain(settings) {
   for (const band of settings.eqBands) {
     if (Math.abs(band.gain) <= 0.01) continue;
     filters.push(
-      `equalizer=f=${band.freq.toFixed(3)}:t=q:w=4.31:g=${band.gain.toFixed(3)}`,
+      `equalizer=f=${band.freq.toFixed(3)}:width_type=q:width=4.31:gain=${band.gain.toFixed(3)}`,
     );
   }
 
@@ -130,6 +130,16 @@ function buildFilterChain(settings) {
   }
 
   return filters.join(",");
+}
+
+function summarizeFfmpegError(stderr) {
+  const text = String(stderr || "");
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const tail = lines.slice(-20);
+  return tail.join("\n");
 }
 
 function ffmpegArgs(inputPath, outputPath, format, bitrate, audioFilter) {
@@ -286,7 +296,9 @@ async function convertUploadedFile(file, format, bitrate, audioFilter) {
           resolve();
           return;
         }
-        reject(new Error(stderr || `ffmpeg exit code ${code}`));
+        reject(
+          new Error(summarizeFfmpegError(stderr) || `ffmpeg exit code ${code}`),
+        );
       });
     });
 
