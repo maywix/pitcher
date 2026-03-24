@@ -87,12 +87,29 @@
               multiple
               hidden
             />
+            <input
+              type="file"
+              id="folderFile"
+              accept=".mp3,.flac,.wav,.aac,.ogg"
+              multiple
+              webkitdirectory
+              directory
+              hidden
+            />
             <div class="upload-content">
               <div class="upload-icon">
                 <i class="fas fa-cloud-upload-alt"></i>
               </div>
               <h2>Glissez vos fichiers audio ici</h2>
               <p>ou cliquez pour parcourir</p>
+              <button
+                type="button"
+                class="upload-folder-btn"
+                id="selectFoldersBtn"
+              >
+                <i class="fas fa-folder-open"></i>
+                <span>Ajouter dossier(s)</span>
+              </button>
               <p class="upload-formats">MP3, WAV, FLAC, AAC, OGG</p>
             </div>
           </div>

@@ -5,6 +5,7 @@ document.addEventListener("DOMContentLoaded", function () {
   let djTurntable = null;
   // Runtime state
   let audioFiles = new Map();
+  let audioFilePaths = new Map();
   // Recorder instance
   let audioRecorder = null;
   // Recorded files list
@@ -77,11 +78,24 @@ document.addEventListener("DOMContentLoaded", function () {
   // ==========================================
   const uploadZone = document.getElementById("uploadZone");
   const audioFileInput = document.getElementById("audioFile");
+  const folderFileInput = document.getElementById("folderFile");
+  const selectFoldersBtn = document.getElementById("selectFoldersBtn");
+
+  if (selectFoldersBtn && folderFileInput) {
+    selectFoldersBtn.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      folderFileInput.click();
+    });
+  }
 
   // Click on upload zone opens file dialog
   uploadZone.addEventListener("click", function (e) {
-    // Prevent triggering if clicking on input itself
-    if (e.target !== audioFileInput) {
+    if (e.target && e.target.closest("#selectFoldersBtn")) {
+      return;
+    }
+
+    if (e.target !== audioFileInput && e.target !== folderFileInput) {
       audioFileInput.click();
     }
   });
@@ -115,9 +129,9 @@ document.addEventListener("DOMContentLoaded", function () {
     e.stopPropagation();
     this.classList.remove("drag-over");
 
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      await handleFiles(files);
+    const droppedEntries = await extractDroppedFiles(e.dataTransfer);
+    if (droppedEntries.length > 0) {
+      await handleFiles(droppedEntries);
     }
   });
 
@@ -129,6 +143,115 @@ document.addEventListener("DOMContentLoaded", function () {
   document.addEventListener("drop", function (e) {
     e.preventDefault();
   });
+
+  function normalizeRelativePath(rawPath, fallbackName) {
+    const input = String(rawPath || fallbackName || "").replaceAll("\\", "/");
+    const parts = input
+      .split("/")
+      .map((part) => part.trim())
+      .filter((part) => part && part !== "." && part !== "..");
+
+    if (parts.length === 0) {
+      return String(fallbackName || "audio");
+    }
+
+    return parts.join("/");
+  }
+
+  function topLevelFolderFromPath(filePath) {
+    const normalized = normalizeRelativePath(filePath);
+    const parts = normalized.split("/");
+    if (parts.length > 1) {
+      return parts[0];
+    }
+    return "__root__";
+  }
+
+  function safeZipFileBaseName(name) {
+    const clean = String(name || "export")
+      .replace(/[\\/:*?"<>|]/g, "_")
+      .trim();
+    return clean || "export";
+  }
+
+  function readEntryFile(entry) {
+    return new Promise((resolve, reject) => {
+      entry.file(resolve, reject);
+    });
+  }
+
+  function readAllDirectoryEntries(reader) {
+    return new Promise((resolve, reject) => {
+      const allEntries = [];
+
+      function readBatch() {
+        reader.readEntries(
+          (entries) => {
+            if (!entries.length) {
+              resolve(allEntries);
+              return;
+            }
+            allEntries.push(...entries);
+            readBatch();
+          },
+          (error) => reject(error),
+        );
+      }
+
+      readBatch();
+    });
+  }
+
+  async function collectFilesFromEntry(entry, parentPath = "") {
+    if (!entry) return [];
+
+    if (entry.isFile) {
+      const file = await readEntryFile(entry);
+      return [{ file, relativePath: `${parentPath}${file.name}` }];
+    }
+
+    if (!entry.isDirectory) return [];
+
+    const nextParent = `${parentPath}${entry.name}/`;
+    const reader = entry.createReader();
+    const childEntries = await readAllDirectoryEntries(reader);
+    const allFiles = [];
+
+    for (const child of childEntries) {
+      const childFiles = await collectFilesFromEntry(child, nextParent);
+      allFiles.push(...childFiles);
+    }
+
+    return allFiles;
+  }
+
+  async function extractDroppedFiles(dataTransfer) {
+    const items = Array.from(dataTransfer?.items || []);
+    const hasEntrySupport = items.some(
+      (item) => typeof item.webkitGetAsEntry === "function",
+    );
+
+    if (!hasEntrySupport) {
+      return Array.from(dataTransfer?.files || []);
+    }
+
+    const extracted = [];
+    for (const item of items) {
+      const entry =
+        typeof item.webkitGetAsEntry === "function"
+          ? item.webkitGetAsEntry()
+          : null;
+      if (!entry) continue;
+      const files = await collectFilesFromEntry(entry);
+      extracted.push(...files);
+    }
+
+    if (extracted.length > 0) {
+      return extracted;
+    }
+
+    return Array.from(dataTransfer?.files || []);
+  }
 
   function getUniqueAudioName(desiredName) {
     if (!audioFiles.has(desiredName)) return desiredName;
@@ -145,9 +268,17 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  function addAudioFile(file, desiredName = file.name) {
+  function addAudioFile(
+    file,
+    desiredName = file.name,
+    exportPath = desiredName,
+  ) {
     const uniqueName = getUniqueAudioName(desiredName);
     audioFiles.set(uniqueName, file);
+    audioFilePaths.set(
+      uniqueName,
+      normalizeRelativePath(exportPath, file.name),
+    );
     return uniqueName;
   }
 
@@ -158,10 +289,20 @@ document.addEventListener("DOMContentLoaded", function () {
     let acceptedCount = 0;
     let rejectedCount = 0;
 
-    for (let file of files) {
+    for (let entry of files) {
+      const file = entry && entry.file instanceof File ? entry.file : entry;
+      if (!(file instanceof File)) continue;
+
+      const relativePath = normalizeRelativePath(
+        entry && entry.relativePath
+          ? entry.relativePath
+          : file.webkitRelativePath || file.name,
+        file.name,
+      );
+
       const ext = "." + file.name.split(".").pop().toLowerCase();
       if (validExtensions.includes(ext) || file.type.startsWith("audio/")) {
-        const storedName = addAudioFile(file, file.name);
+        const storedName = addAudioFile(file, relativePath, relativePath);
         acceptedCount += 1;
         if (!firstStoredName) firstStoredName = storedName;
       } else {
@@ -201,6 +342,7 @@ document.addEventListener("DOMContentLoaded", function () {
   if (clearFilesBtn) {
     clearFilesBtn.addEventListener("click", function () {
       audioFiles.clear();
+      audioFilePaths.clear();
       currentFileName = null;
       updateFilesList();
       wavesurfer.empty();
@@ -274,7 +416,7 @@ document.addEventListener("DOMContentLoaded", function () {
     updateRecordedFilesList();
 
     // Also add to main audio files for processing
-    const storedName = addAudioFile(file, file.name);
+    const storedName = addAudioFile(file, file.name, file.name);
     recordedAudioNames.set(name, storedName);
     updateFilesList();
 
@@ -316,6 +458,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const storedName = recordedAudioNames.get(name) || file.name;
         recordedAudioNames.delete(name);
         audioFiles.delete(storedName);
+        audioFilePaths.delete(storedName);
         updateRecordedFilesList();
         updateFilesList();
       });
@@ -1063,8 +1206,22 @@ document.addEventListener("DOMContentLoaded", function () {
     .addEventListener("change", async function (e) {
       if (e.target.files.length > 0) {
         await handleFiles(e.target.files);
+        this.value = "";
       }
     });
+
+  if (folderFileInput) {
+    folderFileInput.addEventListener("change", async function (e) {
+      if (e.target.files.length > 0) {
+        const folderEntries = Array.from(e.target.files).map((file) => ({
+          file,
+          relativePath: file.webkitRelativePath || file.name,
+        }));
+        await handleFiles(folderEntries);
+        this.value = "";
+      }
+    });
+  }
 
   document.getElementById("playBtn").addEventListener("click", function () {
     if (!currentFileName) {
@@ -1246,9 +1403,21 @@ document.addEventListener("DOMContentLoaded", function () {
 
       async function processBatchOnBackend(entries, settings) {
         const formData = new FormData();
+        const uploadManifest = [];
+        let uploadIndex = 0;
+
         for (const [name, file] of entries) {
-          formData.append("files", file, name);
+          uploadIndex += 1;
+          const extensionMatch = /(\.[^/.]+)$/.exec(file.name || name || "");
+          const extension = extensionMatch ? extensionMatch[1] : "";
+          const uploadName = `upload_${Date.now()}_${uploadIndex}${extension}`;
+          formData.append("files", file, uploadName);
+          uploadManifest.push({
+            uploadName,
+            outputPath: audioFilePaths.get(name) || name,
+          });
         }
+        formData.append("manifest", JSON.stringify(uploadManifest));
 
         formData.append("format", settings.outputFormat || "mp3");
         if ((settings.outputFormat || "mp3") !== "wav") {
@@ -1368,10 +1537,25 @@ document.addEventListener("DOMContentLoaded", function () {
 
       try {
         const outputExt = exportSettings.outputFormat || "mp3";
+        const entries = Array.from(audioFiles.entries());
+        const folderGroups = new Map();
 
-        if (audioFiles.size === 1) {
+        for (const [name, file] of entries) {
+          const exportPath = audioFilePaths.get(name) || name;
+          const folderKey = topLevelFolderFromPath(exportPath);
+          if (!folderGroups.has(folderKey)) {
+            folderGroups.set(folderKey, []);
+          }
+          folderGroups.get(folderKey).push([name, file]);
+        }
+
+        const hasFolderImports = Array.from(folderGroups.keys()).some(
+          (group) => group !== "__root__",
+        );
+
+        if (!hasFolderImports && audioFiles.size === 1) {
           // single file: process and download directly (keep original base name, change extension to .mp3)
-          const [[name, file]] = Array.from(audioFiles.entries());
+          const [[name, file]] = entries;
 
           const processedBlob = await processFileOnBackend(
             file,
@@ -1390,18 +1574,35 @@ document.addEventListener("DOMContentLoaded", function () {
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
         } else {
-          // multiple files: process all and zip on backend
-          const entries = Array.from(audioFiles.entries());
-          btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Export fichier 0/${entries.length}...`;
-          const zipBlob = await processBatchOnBackend(entries, exportSettings);
-          const url = URL.createObjectURL(zipBlob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = "processed_all.zip";
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
+          // folder-aware export: one zip per imported top-level folder
+          const groups = Array.from(folderGroups.entries());
+
+          for (let i = 0; i < groups.length; i++) {
+            if (exportAbort.canceled) {
+              throw new Error("Export cancelled");
+            }
+
+            const [folderKey, groupEntries] = groups[i];
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Export dossier ${i + 1}/${groups.length}...`;
+            const zipBlob = await processBatchOnBackend(
+              groupEntries,
+              exportSettings,
+            );
+            const url = URL.createObjectURL(zipBlob);
+            const a = document.createElement("a");
+            a.href = url;
+
+            const zipBaseName =
+              folderKey === "__root__"
+                ? `fichiers_${i + 1}`
+                : safeZipFileBaseName(folderKey);
+            a.download = `${zipBaseName}_processed.zip`;
+
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }
         }
       } catch (err) {
         console.error("Erreur export batch:", err);

@@ -47,6 +47,42 @@ function parseArray(value) {
   }
 }
 
+function parseBatchManifest(value) {
+  try {
+    const parsed = JSON.parse(String(value ?? "[]"));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function normalizeZipRelativePath(rawPath, fallbackName = "audio") {
+  const source = String(rawPath || fallbackName || "audio").replaceAll(
+    "\\",
+    "/",
+  );
+  const parts = source
+    .split("/")
+    .map((part) => part.trim())
+    .filter((part) => part && part !== "." && part !== "..");
+
+  if (parts.length === 0) {
+    return String(fallbackName || "audio");
+  }
+
+  return parts.join("/");
+}
+
+function replacePathExtension(filePath, extension) {
+  const ext = String(extension || "mp3").replace(/^\./, "");
+  const normalized = normalizeZipRelativePath(filePath);
+  const segments = normalized.split("/");
+  const fileName = segments.pop() || "audio";
+  const baseName = fileName.replace(/\.[^/.]+$/, "");
+  segments.push(`${baseName}.${ext}`);
+  return segments.join("/");
+}
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -352,7 +388,9 @@ app.post("/convert", upload.single("file"), async (req, res) => {
   const format = parseFormat(req.body?.format);
   const bitrate = parseBitrate(req.body?.kbps);
   const audioSettings = sanitizeAudioSettings(req.body);
-  const tempProbeDir = await fs.mkdtemp(path.join(os.tmpdir(), "pitcher-probe-"));
+  const tempProbeDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pitcher-probe-"),
+  );
   const probeInputPath = path.join(tempProbeDir, "input");
 
   try {
@@ -389,9 +427,20 @@ app.post("/convert-batch", upload.array("files", 100), async (req, res) => {
 
   const format = parseFormat(req.body?.format);
   const bitrate = parseBitrate(req.body?.kbps);
+  const manifest = parseBatchManifest(req.body?.manifest);
+  const manifestByUploadName = new Map(
+    manifest
+      .filter((item) => item && item.uploadName)
+      .map((item) => [
+        String(item.uploadName),
+        normalizeZipRelativePath(item.outputPath, item.uploadName),
+      ]),
+  );
   const audioSettings = sanitizeAudioSettings(req.body);
   let inputSampleRate = 44100;
-  const tempProbeDir = await fs.mkdtemp(path.join(os.tmpdir(), "pitcher-probe-"));
+  const tempProbeDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pitcher-probe-"),
+  );
 
   try {
     const probeInputPath = path.join(tempProbeDir, "input");
@@ -400,7 +449,6 @@ app.post("/convert-batch", upload.array("files", 100), async (req, res) => {
     const audioFilter = buildFilterChain(audioSettings, inputSampleRate);
 
     const zip = new JSZip();
-    const usedNames = new Set();
     const cpuCount = os.cpus()?.length || 2;
     const workerCount = Math.min(
       files.length,
@@ -420,8 +468,12 @@ app.post("/convert-batch", upload.array("files", 100), async (req, res) => {
           bitrate,
           audioFilter,
         );
-        const uniqueName = uniqueFileName(converted.downloadName, usedNames);
-        zip.file(uniqueName, converted.outputBuffer);
+        const requestedPath =
+          manifestByUploadName.get(files[index].originalname) ||
+          files[index].originalname ||
+          `audio_${index + 1}`;
+        const outputPath = replacePathExtension(requestedPath, format);
+        zip.file(outputPath, converted.outputBuffer);
       }
     }
 
@@ -460,9 +512,20 @@ app.post(
 
     const format = parseFormat(req.body?.format);
     const bitrate = parseBitrate(req.body?.kbps);
+    const manifest = parseBatchManifest(req.body?.manifest);
+    const manifestByUploadName = new Map(
+      manifest
+        .filter((item) => item && item.uploadName)
+        .map((item) => [
+          String(item.uploadName),
+          normalizeZipRelativePath(item.outputPath, item.uploadName),
+        ]),
+    );
     const audioSettings = sanitizeAudioSettings(req.body);
     let inputSampleRate = 44100;
-    const tempProbeDir = await fs.mkdtemp(path.join(os.tmpdir(), "pitcher-probe-"));
+    const tempProbeDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "pitcher-probe-"),
+    );
 
     const jobId = randomUUID();
     const job = {
@@ -486,7 +549,6 @@ app.post(
         const audioFilter = buildFilterChain(audioSettings, inputSampleRate);
 
         const zip = new JSZip();
-        const usedNames = new Set();
 
         const cpuCount = os.cpus()?.length || 2;
         const workerCount = Math.min(
@@ -512,11 +574,12 @@ app.post(
               audioFilter,
             );
 
-            const uniqueName = uniqueFileName(
-              converted.downloadName,
-              usedNames,
-            );
-            zip.file(uniqueName, converted.outputBuffer);
+            const requestedPath =
+              manifestByUploadName.get(files[index].originalname) ||
+              files[index].originalname ||
+              `audio_${index + 1}`;
+            const outputPath = replacePathExtension(requestedPath, format);
+            zip.file(outputPath, converted.outputBuffer);
             job.processed += 1;
           }
         }

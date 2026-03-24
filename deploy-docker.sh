@@ -4,6 +4,9 @@ set -euo pipefail
 
 PORT="${1:-8080}"
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 export PORT
 
 if docker compose version >/dev/null 2>&1; then
@@ -22,7 +25,7 @@ echo "[2/4] Build images sans cache..."
 $COMPOSE_CMD build --pull --no-cache
 
 echo "[3/4] Start services..."
-$COMPOSE_CMD up -d
+$COMPOSE_CMD up -d --force-recreate
 
 echo "[4/4] Done."
 echo "Local URL:    http://localhost:${PORT}"
